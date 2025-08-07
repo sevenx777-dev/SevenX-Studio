@@ -12,3 +12,4 @@ tokenizers
 numpy
 pyinstaller
 Pillow
+ctransformers[cpu]==0.2.27
