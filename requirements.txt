@@ -11,3 +11,4 @@ sentencepiece
 tokenizers
 numpy
 pyinstaller
+Pillow
