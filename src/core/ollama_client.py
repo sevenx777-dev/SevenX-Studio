@@ -41,25 +41,19 @@ class SevenXEngine:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.session = None
         
-        # Modelos disponíveis para download
+        # Modelos disponíveis para download (apenas modelos de geração)
         self.available_models = {
+            "microsoft/DialoGPT-small": {
+                "name": "DialoGPT Small", 
+                "description": "Modelo conversacional compacto - RECOMENDADO",
+                "size": "120MB",
+                "type": "chat"
+            },
             "microsoft/DialoGPT-medium": {
                 "name": "DialoGPT Medium",
                 "description": "Modelo conversacional da Microsoft",
                 "size": "350MB",
                 "type": "chat"
-            },
-            "microsoft/DialoGPT-small": {
-                "name": "DialoGPT Small", 
-                "description": "Modelo conversacional compacto",
-                "size": "120MB",
-                "type": "chat"
-            },
-            "distilbert-base-uncased": {
-                "name": "DistilBERT Base",
-                "description": "Modelo BERT otimizado",
-                "size": "250MB", 
-                "type": "embedding"
             },
             "gpt2": {
                 "name": "GPT-2",
@@ -72,12 +66,6 @@ class SevenXEngine:
                 "description": "GPT-2 versão média",
                 "size": "1.5GB",
                 "type": "generation"
-            },
-            "microsoft/CodeBERT-base": {
-                "name": "CodeBERT",
-                "description": "Modelo especializado em código",
-                "size": "450MB",
-                "type": "code"
             }
         }
     
@@ -237,6 +225,12 @@ class SevenXEngine:
         try:
             print(f"Tentando carregar modelo: {model_name}")
             
+            # Verificar se é um modelo compatível
+            if "CodeBERT" in model_name or "BERT" in model_name or "DistilBERT" in model_name:
+                print(f"❌ {model_name} não é compatível com geração de texto!")
+                print("💡 Use DialoGPT Small ou GPT-2 para chat")
+                return False
+            
             if model_name in self.loaded_models:
                 print(f"Modelo {model_name} já está carregado")
                 return True
@@ -273,17 +267,30 @@ class SevenXEngine:
             # Tentar diferentes abordagens para carregar
             try:
                 # Primeira tentativa: carregar do diretório local
-                tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
+                tokenizer = AutoTokenizer.from_pretrained(str(model_dir), use_fast=False)
                 print("Tokenizer carregado do diretório local")
             except Exception as e1:
                 print(f"Erro ao carregar tokenizer local: {e1}")
                 try:
                     # Segunda tentativa: carregar do Hugging Face
-                    tokenizer = AutoTokenizer.from_pretrained(model_id)
+                    tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=False)
                     print("Tokenizer carregado do Hugging Face")
                 except Exception as e2:
                     print(f"Erro ao carregar tokenizer do HF: {e2}")
                     return False
+            
+            # Configurar tokens especiais se não existirem
+            if not hasattr(tokenizer, 'pad_token') or tokenizer.pad_token is None:
+                if hasattr(tokenizer, 'eos_token') and tokenizer.eos_token:
+                    tokenizer.pad_token = tokenizer.eos_token
+                    print("Configurado pad_token = eos_token")
+                else:
+                    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+                    print("Adicionado pad_token especial")
+            
+            if not hasattr(tokenizer, 'eos_token') or tokenizer.eos_token is None:
+                tokenizer.add_special_tokens({'eos_token': '</s>'})
+                print("Adicionado eos_token especial")
             
             print("Carregando modelo...")
             
@@ -359,51 +366,78 @@ class SevenXEngine:
             tokenizer = model_data["tokenizer"]
             model = model_data["model"]
             
-            # Configurar parâmetros
-            max_length = options.get("max_tokens", 50) if options else 50  # Reduzido para teste
-            temperature = options.get("temperature", 0.7) if options else 0.7
-            top_p = options.get("top_p", 0.9) if options else 0.9
+            # Configurar parâmetros otimizados para conversação
+            max_length = options.get("max_tokens", 150) if options else 150  # Aumentado
+            temperature = options.get("temperature", 0.8) if options else 0.8  # Mais criativo
+            top_p = options.get("top_p", 0.95) if options else 0.95  # Mais diversidade
             
             print(f"Parâmetros: max_length={max_length}, temperature={temperature}")
             
+            # Melhorar o prompt para conversação
+            conversation_prompt = f"""Você é um assistente útil e amigável. Responda de forma natural e conversacional.
+
+Humano: {prompt.replace('Usuário:', '').replace('Assistente:', '').strip()}
+
+Assistente:"""
+
             # Verificar se é pipeline real ou estrutura simples
             if hasattr(pipeline, '__call__'):
                 # Pipeline real
                 print("Usando pipeline real")
-                response = pipeline(
-                    prompt,
-                    max_length=len(prompt.split()) + max_length,
-                    temperature=temperature,
-                    top_p=top_p,
-                    do_sample=True,
-                    pad_token_id=tokenizer.eos_token_id if hasattr(tokenizer, 'eos_token_id') else tokenizer.pad_token_id
-                )
+                # Configurar parâmetros de geração seguros
+                generation_params = {
+                    "max_length": len(conversation_prompt.split()) + max_length,
+                    "temperature": temperature,
+                    "top_p": top_p,
+                    "do_sample": True,
+                    "repetition_penalty": 1.2,
+                }
+                
+                # Adicionar pad_token_id se disponível
+                if hasattr(tokenizer, 'pad_token_id') and tokenizer.pad_token_id is not None:
+                    generation_params["pad_token_id"] = tokenizer.pad_token_id
+                elif hasattr(tokenizer, 'eos_token_id') and tokenizer.eos_token_id is not None:
+                    generation_params["pad_token_id"] = tokenizer.eos_token_id
+                
+                response = pipeline(conversation_prompt, **generation_params)
                 
                 # Extrair resposta
                 generated_text = response[0]["generated_text"]
-                new_text = generated_text[len(prompt):].strip()
+                new_text = generated_text[len(conversation_prompt):].strip()
                 
             else:
                 # Estrutura simples - usar modelo diretamente
                 print("Usando estrutura simples")
                 
                 # Tokenizar entrada
-                inputs = tokenizer.encode(prompt, return_tensors="pt").to(self.device)
+                inputs = tokenizer.encode(conversation_prompt, return_tensors="pt").to(self.device)
                 
-                # Gerar resposta
+                # Configurar parâmetros de geração seguros
+                generation_params = {
+                    "max_length": inputs.shape[1] + max_length,
+                    "temperature": temperature,
+                    "top_p": top_p,
+                    "do_sample": True,
+                    "repetition_penalty": 1.2,
+                    "no_repeat_ngram_size": 3,
+                }
+                
+                # Adicionar pad_token_id se disponível
+                if hasattr(tokenizer, 'pad_token_id') and tokenizer.pad_token_id is not None:
+                    generation_params["pad_token_id"] = tokenizer.pad_token_id
+                elif hasattr(tokenizer, 'eos_token_id') and tokenizer.eos_token_id is not None:
+                    generation_params["pad_token_id"] = tokenizer.eos_token_id
+                else:
+                    # Fallback: usar 0 como pad_token_id
+                    generation_params["pad_token_id"] = 0
+                
+                # Gerar resposta com parâmetros otimizados
                 with torch.no_grad():
-                    outputs = model.generate(
-                        inputs,
-                        max_length=inputs.shape[1] + max_length,
-                        temperature=temperature,
-                        top_p=top_p,
-                        do_sample=True,
-                        pad_token_id=tokenizer.eos_token_id if hasattr(tokenizer, 'eos_token_id') else tokenizer.pad_token_id
-                    )
+                    outputs = model.generate(inputs, **generation_params)
                 
                 # Decodificar resposta
                 generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                new_text = generated_text[len(prompt):].strip()
+                new_text = generated_text[len(conversation_prompt):].strip()
             
             result = new_text if new_text else "Desculpe, não consegui gerar uma resposta adequada."
             print(f"Resposta gerada: {result[:100]}...")

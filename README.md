@@ -11,10 +11,12 @@
 [![GitHub release](https://img.shields.io/github/release/sevenx777-dev/SevenX-Studio.svg)](https://github.com/sevenx777-dev/SevenX-Studio/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/sevenx777-dev/SevenX-Studio.svg)](https://github.com/sevenx777-dev/SevenX-Studio/stargazers)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/sevenx777-dev/SevenX-Studio/simple-ci.yml?branch=main)](https://github.com/sevenx777-dev/SevenX-Studio/actions)
+[![Downloads](https://img.shields.io/github/downloads/sevenx777-dev/SevenX-Studio/total.svg)](https://github.com/sevenx777-dev/SevenX-Studio/releases)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 
-[📥 Download](#-instalação) • [📖 Documentação](#-como-usar) • [🐛 Issues](https://github.com/sevenx-team/sevenx-studio/issues) • [💬 Discussões](https://github.com/sevenx-team/sevenx-studio/discussions)
+[📥 Download](https://github.com/sevenx777-dev/SevenX-Studio/releases) • [📖 Documentação](#-como-usar) • [🐛 Issues](https://github.com/sevenx777-dev/SevenX-Studio/issues) • [💬 Discussões](https://github.com/sevenx777-dev/SevenX-Studio/discussions)
 
 </div>
 

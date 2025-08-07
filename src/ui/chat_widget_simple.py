@@ -139,7 +139,7 @@ class SimpleChatWidget(QWidget):
         self.temperature_spin = QDoubleSpinBox()
         self.temperature_spin.setRange(0.0, 2.0)
         self.temperature_spin.setSingleStep(0.1)
-        self.temperature_spin.setValue(0.7)
+        self.temperature_spin.setValue(0.8)  # Mais criativo
         temp_layout.addWidget(self.temperature_spin)
         params_layout.addLayout(temp_layout)
         
@@ -147,8 +147,8 @@ class SimpleChatWidget(QWidget):
         tokens_layout = QHBoxLayout()
         tokens_layout.addWidget(QLabel("Max Tokens:"))
         self.max_tokens_spin = QSpinBox()
-        self.max_tokens_spin.setRange(1, 2048)
-        self.max_tokens_spin.setValue(512)
+        self.max_tokens_spin.setRange(50, 1000)
+        self.max_tokens_spin.setValue(200)  # Mais tokens para respostas melhores
         tokens_layout.addWidget(self.max_tokens_spin)
         params_layout.addLayout(tokens_layout)
         
