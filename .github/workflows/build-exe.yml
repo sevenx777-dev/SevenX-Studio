@@ -1,0 +1,70 @@
+name: Build Executable
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller pillow
+        pip install PyQt6
+        pip install torch --index-url https://download.pytorch.org/whl/cpu
+        pip install transformers huggingface-hub requests psutil
+
+    - name: Create icon
+      run: |
+        python create_icon.py
+      continue-on-error: true
+
+    - name: Build executable
+      run: |
+        pyinstaller --onefile --windowed --name "SevenX-Studio" --add-data "src;src" main.py
+
+    - name: Rename executable
+      run: |
+        if (Test-Path "dist\SevenX-Studio.exe") {
+          Rename-Item "dist\SevenX-Studio.exe" "SevenX-Studio-v1.0.0-Windows.exe"
+        }
+
+    - name: Upload executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: SevenX-Studio-Windows
+        path: dist/SevenX-Studio-v1.0.0-Windows.exe
+        retention-days: 30
+
+    - name: Create portable folder
+      run: |
+        mkdir portable
+        if (Test-Path "dist\SevenX-Studio-v1.0.0-Windows.exe") {
+          Copy-Item "dist\SevenX-Studio-v1.0.0-Windows.exe" portable\
+        }
+        if (Test-Path "README.md") { Copy-Item "README.md" portable\ }
+        if (Test-Path "LICENSE") { Copy-Item "LICENSE" portable\ }
+        echo "SevenX Studio v1.0.0 - Portable Version" | Out-File -FilePath portable\README.txt
+        echo "" | Out-File -FilePath portable\README.txt -Append
+        echo "1. Run SevenX-Studio-v1.0.0-Windows.exe" | Out-File -FilePath portable\README.txt -Append
+        echo "2. Go to Models tab and download DialoGPT Small" | Out-File -FilePath portable\README.txt -Append
+        echo "3. Go to Chat tab and start chatting!" | Out-File -FilePath portable\README.txt -Append
+
+    - name: Upload portable version
+      uses: actions/upload-artifact@v4
+      with:
+        name: SevenX-Studio-Portable
+        path: portable/
+        retention-days: 30

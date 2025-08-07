@@ -83,7 +83,7 @@ jobs:
         echo "Executable size: $([math]::Round($size, 1)) MB"
 
     - name: Upload executable
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: SevenX-Studio-v1.0.0-Windows
         path: dist/SevenX Studio.exe
@@ -101,73 +101,9 @@ jobs:
         echo "Veja README.md para instrucoes completas" >> SevenX_Studio_Portable\INFO.txt
 
     - name: Upload portable package
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: SevenX-Studio-Portable-v1.0.0
         path: SevenX_Studio_Portable/
 
-  create-release:
-    runs-on: ubuntu-latest
-    needs: build-exe
-    if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, 'Release Candidate')
-    
-    steps:
-    - uses: actions/checkout@v3
-    
-    - name: Download executable
-      uses: actions/download-artifact@v3
-      with:
-        name: SevenX-Studio-v1.0.0-Windows
-        path: ./release/
-    
-    - name: Download portable package
-      uses: actions/download-artifact@v3
-      with:
-        name: SevenX-Studio-Portable-v1.0.0
-        path: ./portable/
-    
-    - name: Create Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: v1.0.0
-        release_name: SevenX Studio v1.0.0
-        body: |
-          # 🚀 SevenX Studio v1.0.0 - Primeira Release Oficial!
-          
-          ## ✨ Funcionalidades
-          - 🤖 Motor de IA próprio independente
-          - 💬 Chat com modelos DialoGPT e GPT-2
-          - 📊 Monitor de sistema em tempo real
-          - 🎨 Interface moderna PyQt6
-          - 🔧 Configurações avançadas
-          
-          ## 📦 Downloads
-          - **SevenX Studio.exe** - Executável standalone
-          - **SevenX_Studio_Portable** - Versão portátil completa
-          
-          ## 🎯 Como Usar
-          1. Baixe o executável
-          2. Execute "SevenX Studio.exe"
-          3. Vá para aba "Modelos" e baixe DialoGPT Small
-          4. Volte para "Chat" e comece a conversar!
-          
-          ## 📋 Requisitos
-          - Windows 10/11
-          - 4GB+ RAM
-          - Conexão com internet (para download de modelos)
-          
-          Veja README.md para instruções completas.
-        draft: false
-        prerelease: false
-        
-    - name: Upload Release Asset - Executable
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./release/SevenX Studio.exe
-        asset_name: SevenX-Studio-v1.0.0-Windows.exe
-        asset_content_type: application/octet-stream
+  # Release será criada manualmente usando os artifacts
