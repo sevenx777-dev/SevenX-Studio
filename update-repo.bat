@@ -47,6 +47,11 @@ echo Fazendo commit com a mensagem: "%commit_message%"
 git commit -m "%commit_message%"
 echo.
 
+REM --- **CORRECAO AQUI**: Puxa as alteracoes do repositorio remoto primeiro ---
+echo Puxando as ultimas alteracoes do GitHub (git pull)...
+git pull origin main
+echo.
+
 echo Enviando atualizacoes para o repositorio remoto (origin main)...
 git push origin main
 
