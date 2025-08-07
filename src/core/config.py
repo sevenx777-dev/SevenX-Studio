@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Dict, Any
 
 class Config:
-    """Classe para gerenciar as configurações da aplicação."""
-    
     def __init__(self):
         self.config_dir = Path.home() / ".sevenx_studio"
         self.config_file = self.config_dir / "config.json"
@@ -21,12 +19,10 @@ class Config:
         self.settings = self._load_config()
     
     def _create_directories(self):
-        """Cria os diretórios necessários para a aplicação se não existirem."""
         for directory in [self.config_dir, self.default_models_path, self.logs_dir, self.conversations_dir]:
             directory.mkdir(parents=True, exist_ok=True)
     
     def _load_config(self) -> Dict[str, Any]:
-        """Carrega as configurações do arquivo JSON, usando padrões se o arquivo não existir."""
         default_config = {
             "theme": "dark",
             "language": "pt-BR",
@@ -47,7 +43,8 @@ class Config:
                 "window_height": 800,
                 "sidebar_width": 250,
                 "font_size": 12,
-                "show_system_info": True
+                "show_system_info": True,
+                "lite_mode": False # OTIMIZAÇÃO: Modo Leve para PCs com menos recursos
             }
         }
         
@@ -66,7 +63,6 @@ class Config:
         return default_config
     
     def save_config(self):
-        """Salva as configurações atuais no arquivo JSON."""
         try:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.settings, f, indent=2, ensure_ascii=False)
@@ -74,7 +70,6 @@ class Config:
             print(f"Erro ao salvar as configurações: {e}")
     
     def get(self, key: str, default: Any = None) -> Any:
-        """Obtém um valor de configuração usando notação de ponto."""
         keys = key.split('.')
         value = self.settings
         for k in keys:
@@ -85,7 +80,6 @@ class Config:
         return value
     
     def set(self, key: str, value: Any):
-        """Define um valor de configuração e salva o arquivo."""
         keys = key.split('.')
         config = self.settings
         for k in keys[:-1]:
@@ -95,5 +89,4 @@ class Config:
     
     @property
     def models_directory(self) -> Path:
-        """Retorna o caminho para o diretório de modelos como um objeto Path."""
         return Path(self.get("models_directory"))

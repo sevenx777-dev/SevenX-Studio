@@ -1,6 +1,6 @@
 """
 Arquivo: sevenx_engine.py
-Descrição: Motor de IA que usa um token de acesso para baixar modelos protegidos.
+Descrição: Motor de IA otimizado para menor consumo de memória.
 """
 
 import torch
@@ -20,12 +20,10 @@ try:
 except ImportError:
     HUGGINGFACE_AVAILABLE = False
 
-# **CORREÇÃO AQUI**: Importação relativa para o arquivo config.py na mesma pasta.
 from .config import Config
 
 @dataclass
 class ModelInfo:
-    """Estrutura de dados para armazenar informações sobre um modelo instalado."""
     name: str
     size: int
     path: str
@@ -34,8 +32,6 @@ class ModelInfo:
     status: str = "installed"
 
 class SevenXEngine:
-    """Motor de IA que usa um token de acesso para baixar modelos protegidos."""
-    
     def __init__(self, config: Config):
         self.config = config
         self.models_dir = config.models_directory
@@ -43,7 +39,34 @@ class SevenXEngine:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"SevenXEngine inicializado. Usando device: {self.device}")
 
-    # ... (O resto do código do SevenXEngine continua exatamente o mesmo)
+    def load_model(self, model_id: str) -> bool:
+        if model_id in self.loaded_models: return True
+        model_dir_name = model_id.replace('/', '__')
+        model_dir = self.models_dir / model_dir_name
+        if not model_dir.exists(): return False
+        
+        token = self.config.get("hf_token") or None
+        print(f"Carregando modelo {model_id} de {model_dir}...")
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(str(model_dir), token=token)
+            # OTIMIZAÇÃO: Usa menos RAM ao carregar o modelo na CPU.
+            model = AutoModelForCausalLM.from_pretrained(
+                str(model_dir), 
+                token=token, 
+                low_cpu_mem_usage=True
+            )
+            model.to(self.device)
+            
+            if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
+            if not getattr(tokenizer, 'chat_template', None) and not getattr(tokenizer, 'default_chat_template', None):
+                tokenizer.chat_template = None
+            
+            self.loaded_models[model_id] = {"model": model, "tokenizer": tokenizer}
+            print(f"Modelo {model_id} carregado com sucesso.")
+            return True
+        except Exception as e:
+            print(f"Erro ao carregar o modelo {model_id}: {e}"); return False
+
     def is_available(self) -> bool:
         try:
             torch.tensor([1.0]); return True
@@ -115,28 +138,6 @@ class SevenXEngine:
             if model_dir.exists(): shutil.rmtree(model_dir)
             return False
 
-    def load_model(self, model_id: str) -> bool:
-        if model_id in self.loaded_models: return True
-        model_dir_name = model_id.replace('/', '__')
-        model_dir = self.models_dir / model_dir_name
-        if not model_dir.exists(): return False
-        
-        token = self.config.get("hf_token") or None
-        
-        print(f"Carregando modelo {model_id} de {model_dir}...")
-        try:
-            tokenizer = AutoTokenizer.from_pretrained(str(model_dir), token=token)
-            model = AutoModelForCausalLM.from_pretrained(str(model_dir), token=token)
-            model.to(self.device)
-            if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
-            if not getattr(tokenizer, 'chat_template', None) and not getattr(tokenizer, 'default_chat_template', None):
-                tokenizer.chat_template = None
-            self.loaded_models[model_id] = {"model": model, "tokenizer": tokenizer}
-            print(f"Modelo {model_id} carregado com sucesso no device '{self.device}'.")
-            return True
-        except Exception as e:
-            print(f"Erro ao carregar o modelo {model_id}: {e}"); return False
-
     def unload_model(self, model_id: str) -> bool:
         if model_id in self.loaded_models:
             del self.loaded_models[model_id]
@@ -169,7 +170,6 @@ class SevenXEngine:
             if tokenizer.chat_template:
                 prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             else:
-                print(f"[AVISO] O modelo '{model_id}' não possui um template de chat. Construindo prompt manualmente.")
                 for message in messages:
                     prompt_text += message["content"] + tokenizer.eos_token
             
