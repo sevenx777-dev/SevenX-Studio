@@ -5,8 +5,8 @@ Janela principal da aplicação SevenX Studio
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QTabWidget, QSplitter, QStatusBar, QMenuBar, 
                              QToolBar, QLabel, QPushButton)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QAction
 
 from .chat_widget_simple import ChatWidget
 from .models_widget import ModelsWidget
@@ -15,6 +15,8 @@ from .system_monitor import SystemMonitor
 from ..core.config import Config
 from ..core.logger import setup_logger
 from ..core.sevenx_engine import SevenXEngine
+# **NOVO**: Importa o cliente Ollama
+from ..core.ollama_client import OllamaClient
 
 class MainWindow(QMainWindow):
     """Janela principal da aplicação"""
@@ -24,8 +26,9 @@ class MainWindow(QMainWindow):
         self.config = config
         self.logger = setup_logger(__name__)
         
-        # **AJUSTE AQUI**: Passa o objeto 'config' inteiro para o motor
+        # Inicializa ambos os motores
         self.ai_engine = SevenXEngine(config)
+        self.ollama_client = OllamaClient(config) # **NOVO**
         
         self.setWindowTitle("SevenX Studio - Local AI Platform")
         self.setMinimumSize(1000, 700)
@@ -58,7 +61,8 @@ class MainWindow(QMainWindow):
         self.tab_widget = QTabWidget()
         main_splitter.addWidget(self.tab_widget)
         
-        self.chat_widget = ChatWidget(self.config, self.ai_engine)
+        # **ALTERADO**: Passa o cliente Ollama para o widget de chat
+        self.chat_widget = ChatWidget(self.config, self.ai_engine, self.ollama_client)
         self.tab_widget.addTab(self.chat_widget, "💬 Chat")
         
         self.models_widget = ModelsWidget(self.ai_engine)
@@ -69,31 +73,50 @@ class MainWindow(QMainWindow):
         
         main_splitter.setSizes([280, 920])
         main_splitter.setCollapsible(0, True)
-    
+
     def setup_menu(self):
         menubar = self.menuBar()
         file_menu = menubar.addMenu("&Arquivo")
-        new_chat_action = QAction("&Nova Conversa", self); new_chat_action.setShortcut("Ctrl+N"); new_chat_action.triggered.connect(self.chat_widget.new_conversation); file_menu.addAction(new_chat_action)
+        new_chat_action = QAction("&Nova Conversa", self)
+        new_chat_action.setShortcut("Ctrl+N")
+        new_chat_action.triggered.connect(self.chat_widget.new_conversation)
+        file_menu.addAction(new_chat_action)
         file_menu.addSeparator()
-        exit_action = QAction("&Sair", self); exit_action.setShortcut("Ctrl+Q"); exit_action.triggered.connect(self.close); file_menu.addAction(exit_action)
+        exit_action = QAction("&Sair", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
         models_menu = menubar.addMenu("&Modelos")
-        refresh_models_action = QAction("&Atualizar Lista", self); refresh_models_action.setShortcut("F5"); refresh_models_action.triggered.connect(self.models_widget.refresh_all_models); models_menu.addAction(refresh_models_action)
+        refresh_models_action = QAction("&Atualizar Lista", self)
+        refresh_models_action.setShortcut("F5")
+        refresh_models_action.triggered.connect(self.models_widget.refresh_all_models)
+        models_menu.addAction(refresh_models_action)
         help_menu = menubar.addMenu("&Ajuda")
-        about_action = QAction("&Sobre", self); about_action.triggered.connect(self.show_about); help_menu.addAction(about_action)
-    
+        about_action = QAction("&Sobre", self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+
     def setup_toolbar(self):
         toolbar = QToolBar()
         self.addToolBar(toolbar)
-        new_chat_btn = QPushButton("Nova Conversa"); new_chat_btn.clicked.connect(self.chat_widget.new_conversation); toolbar.addWidget(new_chat_btn)
+        new_chat_btn = QPushButton("Nova Conversa")
+        new_chat_btn.clicked.connect(self.chat_widget.new_conversation)
+        toolbar.addWidget(new_chat_btn)
         toolbar.addSeparator()
-        refresh_btn = QPushButton("Atualizar Modelos"); refresh_btn.clicked.connect(self.models_widget.refresh_all_models); toolbar.addWidget(refresh_btn)
-    
+        refresh_btn = QPushButton("Atualizar Modelos")
+        refresh_btn.clicked.connect(self.models_widget.refresh_all_models)
+        toolbar.addWidget(refresh_btn)
+
     def setup_statusbar(self):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_label = QLabel("Pronto"); self.connection_label = QLabel("Desconectado"); self.models_count_label = QLabel("0 modelos")
-        self.status_bar.addWidget(self.status_label); self.status_bar.addPermanentWidget(self.models_count_label); self.status_bar.addPermanentWidget(self.connection_label)
-    
+        self.status_label = QLabel("Pronto")
+        self.connection_label = QLabel("Desconectado")
+        self.models_count_label = QLabel("0 modelos")
+        self.status_bar.addWidget(self.status_label)
+        self.status_bar.addPermanentWidget(self.models_count_label)
+        self.status_bar.addPermanentWidget(self.connection_label)
+
     def apply_theme(self):
         if self.config.get("theme") == "dark":
             self.setStyleSheet("""
@@ -110,21 +133,24 @@ class MainWindow(QMainWindow):
                 QPushButton:hover { background-color: #106ebe; }
                 QPushButton:pressed { background-color: #005a9e; }
             """)
-    
+
     def update_system_info(self):
         try:
             if self.ai_engine.is_available():
-                self.connection_label.setText("Motor IA: Ativo"); self.connection_label.setStyleSheet("color: lightgreen;")
+                self.connection_label.setText("Motor IA: Ativo")
+                self.connection_label.setStyleSheet("color: lightgreen;")
             else:
-                self.connection_label.setText("Motor IA: Inativo"); self.connection_label.setStyleSheet("color: red;")
+                self.connection_label.setText("Motor IA: Inativo")
+                self.connection_label.setStyleSheet("color: red;")
             models = self.ai_engine.list_installed_models()
             self.models_count_label.setText(f"{len(models)} modelos")
-        except Exception: pass
-    
+        except Exception:
+            pass
+
     def show_about(self):
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.about(self, "Sobre SevenX Studio", "<h3>SevenX Studio v1.0.0</h3><p>Uma plataforma moderna para IA local.</p>")
-    
+
     def closeEvent(self, event):
         self.config.set("ui_settings.window_width", self.width())
         self.config.set("ui_settings.window_height", self.height())
