@@ -1,21 +1,13 @@
---- Interface Gráfica ---
-PyQt6==6.7.0                # Framework principal para a interface gráfica
-
---- Dependências do Core e Sistema ---
-requests==2.31.0            # Para fazer requisições HTTP (usado pelo cliente Ollama)
-psutil==5.9.8               # Para monitoramento de sistema (CPU, RAM, Disco)
- Machine Learning & IA (SevenX Engine) ---
-torch==2.3.0                # Framework principal de deep learning da Meta
-transformers==4.41.2        # Biblioteca da Hugging Face para carregar e usar modelos de IA
-accelerate==0.30.1          # Otimiza a execução de modelos PyTorch em diferentes hardwares
-huggingface-hub==0.23.0     # Para interagir com o Hugging Face Hub (baixar/procurar modelos)
-safetensors==0.4.3          # Formato seguro para salvar e carregar os pesos dos modelos
-sentencepiece==0.2.0        # Tokenizador usado por muitos modelos de linguagem
-
---- Monitoramento de GPU (Opcional) ---
-#Necessário para exibir informações da GPU NVIDIA no Monitor de Sistema.
-pynvml==11.5.0
-
---- Ferramentas de Build ---
-#Para criar o ficheiro .exe executável no Windows.
-pyinstaller==6.8.0
+PyQt6
+requests
+psutil
+pynvml
+torch
+transformers
+accelerate
+huggingface-hub
+safetensors
+sentencepiece
+tokenizers
+numpy
+pyinstaller
