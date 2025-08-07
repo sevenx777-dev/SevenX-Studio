@@ -24,25 +24,8 @@ class HuggingFaceClient:
         self.loaded_model = None
     
     def get_popular_models(self) -> List[HFModel]:
-        """Obter modelos populares (simulado)"""
-        return [
-            HFModel(
-                name="DialoGPT Small",
-                model_id="microsoft/DialoGPT-small",
-                description="Modelo conversacional compacto",
-                size_gb=0.12,
-                parameters="117M",
-                is_downloaded=False
-            ),
-            HFModel(
-                name="GPT-2",
-                model_id="gpt2",
-                description="Modelo de linguagem OpenAI",
-                size_gb=0.5,
-                parameters="124M",
-                is_downloaded=False
-            )
-        ]
+        """Obter modelos populares (lista vazia - sem modelos predefinidos)"""
+        return []  # Retorna lista vazia - agora busca dinamicamente
     
     def is_model_downloaded(self, model_id: str) -> bool:
         """Verificar se modelo está baixado"""

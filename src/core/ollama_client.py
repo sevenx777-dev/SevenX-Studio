@@ -41,33 +41,8 @@ class SevenXEngine:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.session = None
         
-        # Modelos disponíveis para download (apenas modelos de geração)
-        self.available_models = {
-            "microsoft/DialoGPT-small": {
-                "name": "DialoGPT Small", 
-                "description": "Modelo conversacional compacto - RECOMENDADO",
-                "size": "120MB",
-                "type": "chat"
-            },
-            "microsoft/DialoGPT-medium": {
-                "name": "DialoGPT Medium",
-                "description": "Modelo conversacional da Microsoft",
-                "size": "350MB",
-                "type": "chat"
-            },
-            "gpt2": {
-                "name": "GPT-2",
-                "description": "Modelo de linguagem OpenAI",
-                "size": "500MB",
-                "type": "generation"
-            },
-            "gpt2-medium": {
-                "name": "GPT-2 Medium",
-                "description": "GPT-2 versão média",
-                "size": "1.5GB",
-                "type": "generation"
-            }
-        }
+        # Lista vazia de modelos predefinidos - agora busca dinamicamente do Hugging Face
+        self.available_models = {}
     
     def is_available(self) -> bool:
         """Verificar se o motor está disponível"""
@@ -114,29 +89,64 @@ class SevenXEngine:
     
     def get_available_models(self) -> List[Dict]:
         """Obter lista de modelos disponíveis para download"""
-        return [
-            {
-                "id": model_id,
-                "name": info["name"],
-                "description": info["description"],
-                "size": info["size"],
-                "type": info["type"]
-            }
-            for model_id, info in self.available_models.items()
-        ]
+        # Retorna lista vazia agora, pois removemos modelos predefinidos
+        return []
+    
+    def search_huggingface_models(self, query: str = "", model_type: str = "text-generation") -> List[Dict]:
+        """Buscar modelos no Hugging Face Hub"""
+        try:
+            from huggingface_hub import list_models
+            
+            models = []
+            hf_models = list_models(
+                filter=model_type,
+                search=query,
+                limit=50,
+                sort="downloads",
+                direction=-1
+            )
+            
+            for model in hf_models:
+                if model.downloads and model.downloads > 1000:  # Apenas modelos populares
+                    models.append({
+                        "id": model.id,
+                        "name": model.id.split("/")[-1] if "/" in model.id else model.id,
+                        "description": model.card_data.get("description", "Modelo de linguagem") if model.card_data else "Modelo de linguagem",
+                        "downloads": model.downloads,
+                        "type": model_type
+                    })
+            
+            return models
+            
+        except ImportError:
+            print("huggingface_hub não está disponível")
+            return []
+        except Exception as e:
+            print(f"Erro ao buscar modelos: {e}")
+            return []
+    
+    def validate_model(self, model_id: str) -> bool:
+        """Validar se um modelo existe no Hugging Face"""
+        try:
+            from huggingface_hub import model_info
+            info = model_info(model_id)
+            return info is not None
+        except Exception:
+            return False
     
     def download_model(self, model_id: str, progress_callback: Callable = None) -> bool:
         """Fazer download de um modelo do Hugging Face"""
         try:
-            if model_id not in self.available_models:
+            # Validar modelo antes de baixar
+            if not self.validate_model(model_id):
+                print(f"Modelo {model_id} não encontrado no Hugging Face")
                 return False
-            
-            model_info = self.available_models[model_id]
+                
             model_dir = self.models_dir / model_id.replace('/', '_')
             model_dir.mkdir(parents=True, exist_ok=True)
             
             if progress_callback:
-                progress_callback(10, f"Iniciando download de {model_info['name']}...")
+                progress_callback(10, f"Iniciando download de {model_id}...")
             
             # Listar arquivos do repositório
             try:
@@ -164,7 +174,7 @@ class SevenXEngine:
             except Exception as e:
                 print(f"Erro ao listar arquivos: {e}")
                 # Fallback: baixar arquivos essenciais
-                essential_files = ["config.json", "pytorch_model.bin", "tokenizer.json", "vocab.txt"]
+                essential_files = ["config.json", "pytorch_model.bin", "tokenizer.json", "vocab.txt", "tokenizer_config.json"]
                 for filename in essential_files:
                     try:
                         hf_hub_download(
@@ -177,11 +187,11 @@ class SevenXEngine:
                     except:
                         continue
             
-            # Criar arquivo de configuração local
+            # Criar arquivo de configuração local com informações básicas
             config = {
-                "name": model_info["name"],
-                "description": model_info["description"],
-                "type": model_info["type"],
+                "name": model_id.split("/")[-1] if "/" in model_id else model_id,
+                "description": f"Modelo baixado do Hugging Face: {model_id}",
+                "type": "text-generation",
                 "model_id": model_id,
                 "downloaded_at": datetime.now().isoformat(),
                 "device": self.device
@@ -191,7 +201,7 @@ class SevenXEngine:
                 json.dump(config, f, indent=2)
             
             if progress_callback:
-                progress_callback(100, f"Download de {model_info['name']} concluído!")
+                progress_callback(100, f"Download de {model_id} concluído!")
             
             return True
             
