@@ -6,14 +6,16 @@ Descrição: Motor de IA próprio do SevenX Studio para gerenciar modelos do Hug
 import torch
 import json
 import shutil
+import traceback
 from pathlib import Path
-from typing import Dict, List, Optional, Callable
+from threading import Thread
+from typing import Dict, List, Optional, Callable, Generator
 from dataclasses import dataclass
 from datetime import datetime
 
 try:
     from huggingface_hub import list_models, model_info, hf_hub_download
-    from transformers import AutoTokenizer, AutoModelForCausalLM
+    from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
     HUGGINGFACE_AVAILABLE = True
 except ImportError:
     HUGGINGFACE_AVAILABLE = False
@@ -31,7 +33,7 @@ class ModelInfo:
 class SevenXEngine:
     """
     Motor de IA com capacidade de buscar, baixar, gerenciar e executar
-    modelos de linguagem do Hugging Face.
+    modelos de linguagem do Hugging Face, com suporte a streaming de respostas.
     """
     
     def __init__(self, models_dir: Path):
@@ -107,9 +109,7 @@ class SevenXEngine:
         if progress_callback: progress_callback(0, f"Iniciando download de {model_id}...")
         
         try:
-            # **CORREÇÃO**: Baixar cada arquivo individualmente para o diretório local correto.
-            # Isso evita o problema do cache da biblioteca transformers.
-            repo_files = list(repo_info.siblings)
+            repo_files = [f for f in repo_info.siblings if f.rfilename]
             total_files = len(repo_files)
 
             for i, sibling in enumerate(repo_files):
@@ -118,12 +118,7 @@ class SevenXEngine:
                     progress = int(((i + 1) / total_files) * 95)
                     progress_callback(progress, f"Baixando {filename}...")
 
-                hf_hub_download(
-                    repo_id=model_id,
-                    filename=filename,
-                    local_dir=str(model_dir),
-                    local_dir_use_symlinks=False # Garante que os arquivos sejam copiados
-                )
+                hf_hub_download(repo_id=model_id, filename=filename, local_dir=str(model_dir), local_dir_use_symlinks=False)
 
             if progress_callback: progress_callback(95, "Salvando metadados...")
             info_data = {"model_id": model_id, "downloaded_at": datetime.now().isoformat()}
@@ -140,25 +135,16 @@ class SevenXEngine:
             return False
 
     def load_model(self, model_id: str) -> bool:
-        """Carrega um modelo instalado na memória."""
         if model_id in self.loaded_models: return True
-        
         model_dir_name = model_id.replace('/', '__')
         model_dir = self.models_dir / model_dir_name
-        
-        if not model_dir.exists(): 
-            print(f"Erro: diretório do modelo {model_id} não encontrado.")
-            return False
-            
+        if not model_dir.exists(): return False
         print(f"Carregando modelo {model_id} de {model_dir}...")
         try:
-            # Agora ele vai ler o config.json que foi baixado diretamente para o diretório
             tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
             model = AutoModelForCausalLM.from_pretrained(str(model_dir))
             model.to(self.device)
-            
             if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
-            
             self.loaded_models[model_id] = {"model": model, "tokenizer": tokenizer}
             print(f"Modelo {model_id} carregado com sucesso no device '{self.device}'.")
             return True
@@ -167,17 +153,14 @@ class SevenXEngine:
             return False
 
     def unload_model(self, model_id: str) -> bool:
-        """Descarrega um modelo da memória para liberar recursos."""
         if model_id in self.loaded_models:
             del self.loaded_models[model_id]
-            if self.device == "cuda":
-                torch.cuda.empty_cache()
+            if self.device == "cuda": torch.cuda.empty_cache()
             print(f"Modelo {model_id} descarregado da memória.")
             return True
         return False
 
     def delete_model(self, model_id: str) -> bool:
-        """Remove um modelo do disco."""
         self.unload_model(model_id)
         model_dir_name = model_id.replace('/', '__')
         model_dir = self.models_dir / model_dir_name
@@ -191,22 +174,60 @@ class SevenXEngine:
                 return False
         return False
 
-    def generate_response(self, model_id: str, prompt: str, options: Optional[Dict] = None) -> str:
-        """Gera uma resposta a partir de um modelo carregado."""
+    def generate_stream(self, model_id: str, messages: List[Dict], options: Optional[Dict] = None) -> Generator[str, None, None]:
+        """
+        Gera uma resposta em tempo real (streaming) a partir de um histórico de conversa.
+        Esta função é um gerador que produz texto à medida que é gerado pelo modelo.
+
+        Args:
+            model_id (str): O ID do modelo a ser usado.
+            messages (List[Dict]): O histórico da conversa.
+            options (Optional[Dict]): Parâmetros de geração como temperature, max_new_tokens, etc.
+
+        Yields:
+            str: Pedaços (tokens) da resposta gerada.
+        """
         if model_id not in self.loaded_models:
-            if not self.load_model(model_id): return f"Erro: Falha ao carregar o modelo {model_id}."
+            if not self.load_model(model_id):
+                yield f"Erro: Falha ao carregar o modelo {model_id}."
+                return
         
         model_data = self.loaded_models[model_id]
         model, tokenizer = model_data["model"], model_data["tokenizer"]
         opts = options or {}
-        max_new_tokens = opts.get("max_new_tokens", 150)
-        temperature = opts.get("temperature", 0.7)
-        
+
         try:
-            inputs = tokenizer(prompt, return_tensors="pt").to(self.device)
-            with torch.no_grad():
-                outputs = model.generate(**inputs, max_new_tokens=max_new_tokens, temperature=temperature, pad_token_id=tokenizer.eos_token_id, do_sample=True)
-            response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            return response_text[len(prompt):].strip()
+            prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            inputs = tokenizer([prompt_text], return_tensors="pt").to(self.device)
+            
+            streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+
+            generation_kwargs = {
+                "input_ids": inputs.input_ids,
+                "streamer": streamer,
+                "max_new_tokens": opts.get("max_new_tokens", 1024),
+                "temperature": opts.get("temperature", 0.7),
+                "top_p": opts.get("top_p", 0.9),
+                "top_k": opts.get("top_k", 50),
+                "repetition_penalty": opts.get("repetition_penalty", 1.1),
+                "do_sample": True,
+                "pad_token_id": tokenizer.eos_token_id,
+            }
+
+            thread = Thread(target=model.generate, kwargs=generation_kwargs)
+            thread.start()
+
+            for new_text in streamer:
+                yield new_text
+
         except Exception as e:
-            return f"Erro durante a geração de texto: {e}"
+            print(f"Erro detalhado na geração de stream: {e}")
+            traceback.print_exc()
+            yield f"Erro durante a geração de texto: {e}"
+
+    def cleanup(self):
+        """Descarrega todos os modelos da memória para liberar recursos."""
+        print("Limpando recursos do motor de IA...")
+        for model_id in list(self.loaded_models.keys()):
+            self.unload_model(model_id)
+        print("Limpeza concluída.")

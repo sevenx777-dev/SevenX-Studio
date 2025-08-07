@@ -1,208 +1,43 @@
-# 🚀 SevenX Studio
-
-<div align="center">
-
-![SevenX Studio Logo](assets/banner.png)
-
-**Uma aplicação desktop moderna para gerenciamento e execução de modelos de IA localmente**
-
-[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
-[![PyQt6](https://img.shields.io/badge/PyQt6-6.5+-green.svg)](https://pypi.org/project/PyQt6/)
-[![GitHub release](https://img.shields.io/github/release/sevenx777-dev/SevenX-Studio.svg)](https://github.com/sevenx777-dev/SevenX-Studio/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub stars](https://img.shields.io/github/stars/sevenx777-dev/SevenX-Studio.svg)](https://github.com/sevenx777-dev/SevenX-Studio/stargazers)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/sevenx777-dev/SevenX-Studio/simple-ci.yml?branch=main)](https://github.com/sevenx777-dev/SevenX-Studio/actions)
-[![Downloads](https://img.shields.io/github/downloads/sevenx777-dev/SevenX-Studio/total.svg)](https://github.com/sevenx777-dev/SevenX-Studio/releases)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
-
-[📥 Download](https://github.com/sevenx777-dev/SevenX-Studio/releases) • [📖 Documentação](#-como-usar) • [🐛 Issues](https://github.com/sevenx777-dev/SevenX-Studio/issues) • [💬 Discussões](https://github.com/sevenx777-dev/SevenX-Studio/discussions)
-
-</div>
-
-## ✨ Características
-
-- 🤖 **Motor de IA Próprio** - Engine independente baseado em PyTorch e Transformers
-- 💬 **Chat Interativo** - Interface de chat moderna com streaming em tempo real
-- 📊 **Monitor de Sistema** - Acompanhe uso de CPU, RAM e GPU em tempo real
-- 🎨 **Interface Moderna** - UI responsiva com tema escuro/claro
-- 🔧 **Configurações Avançadas** - Parâmetros personalizáveis (temperature, top-p, etc.)
-- 🔒 **Privacidade Total** - Tudo roda localmente, seus dados ficam seguros
-- 📁 **Histórico de Conversas** - Salve e organize suas conversas
-- 🤗 **Hugging Face Hub** - Integração direta com modelos do Hugging Face
-- ⚡ **GPU Acceleration** - Suporte automático para CUDA quando disponível
-- 📦 **Executável Standalone** - Crie arquivos .exe para distribuição
-
-## 🎯 Modelos Suportados
-
-- **DialoGPT** (Small, Medium, Large) - Conversação
-- **GPT-2** (Base, Medium) - Geração de texto
-- **CodeBERT** - Especializado em código
-- **DistilBERT** - Embeddings eficientes
-- **E todos os modelos compatíveis com Transformers**
-
-## 📋 Requisitos
-
-- **Python 3.8+** (recomendado 3.9+)
-- **4GB+ RAM** (recomendado 8GB+)
-- **2GB espaço livre** para modelos
-- **GPU NVIDIA** (opcional, para melhor performance)
-- **Windows 10/11**, Linux ou macOS
-
-## 🛠️ Instalação
-
-### Windows (Recomendado)
-```bash
-# Método rápido
+🚀 SevenX Studio<div align="center">Uma aplicação desktop moderna para gerenciamento e execução de modelos de IA localmente, com total privacidade e performance.📥 Download da Última Versão • 🐛 Reportar um Bug • 💬 Iniciar uma Discussão</div>✨ Características Principais🤖 Motor de IA Próprio - Engine de inferência local (SevenXEngine) baseado em PyTorch e Transformers.⚡ Streaming em Tempo Real - Receba respostas do modelo palavra por palavra, proporcionando uma experiência de chat fluida e instantânea.🤗 Integração com Hugging Face - Pesquise, baixe e gerencie milhares de modelos diretamente do Hugging Face Hub.💬 Chat Interativo - Interface de chat moderna e intuitiva para conversar com seus modelos de IA.📊 Monitor de Sistema - Acompanhe o uso de CPU, RAM e Disco em tempo real.🎨 Interface Moderna - UI responsiva construída com PyQt6, incluindo um elegante tema escuro.🔧 Configurações Avançadas - Personalize parâmetros de geração como temperature, top_p, max_tokens, e mais.🔒 Privacidade Total - Tudo roda na sua máquina. Seus dados e conversas nunca saem do seu computador.📦 Executável Standalone - Scripts inclusos para criar um arquivo .exe para fácil distribuição no Windows.🎯 Modelos SuportadosO SevenX Studio é compatível com uma vasta gama de modelos da biblioteca transformers, incluindo:Conversação: microsoft/DialoGPT (small, medium, large)Geração de Texto: gpt2, distilgpt2, EleutherAI/gpt-neo-125ME milhares de outros modelos focados em geração de texto disponíveis no Hugging Face Hub.📋 RequisitosPython 3.8+ (recomendado 3.9 ou superior)4GB+ RAM (8GB ou mais é recomendado para modelos maiores)2GB de espaço livre em disco para instalar modelosGPU NVIDIA com CUDA (opcional, mas altamente recomendado para melhor performance)Sistema Operacional: Windows 10/11, Linux ou macOS🛠️ InstalaçãoWindows (Método Rápido)# 1. Instala as dependências em um ambiente virtual
 install.bat
 
-# Executar aplicação
+# 2. Executa a aplicação
 run.bat
-```
+Manual (Para todos os sistemas)# 1. Clone o repositório
+git clone [https://github.com/sevenx777-dev/SevenX-Studio.git](https://github.com/sevenx777-dev/SevenX-Studio.git)
+cd SevenX-Studio
 
-### Manual (Todos os sistemas)
-```bash
-# 1. Clonar repositório
-git clone https://github.com/sevenx-team/sevenx-studio.git
-cd sevenx-studio
-
-# 2. Criar ambiente virtual
+# 2. Crie e ative um ambiente virtual
 python -m venv venv
-
-# 3. Ativar ambiente (Windows)
-venv\Scripts\activate.bat
-# Ou Linux/macOS:
+# No Windows:
+venv\Scripts\activate
+# No Linux/macOS:
 # source venv/bin/activate
 
-# 4. Instalar dependências
+# 3. Instale as dependências
 pip install -r requirements.txt
 
-# 5. Executar aplicação
+# 4. Execute a aplicação
 python main.py
-```
+🎯 Como UsarExecute a Aplicação: Inicie o SevenX Studio usando run.bat ou python main.py.Encontre um Modelo: Vá para a aba "Modelos". Use a barra de pesquisa para encontrar um modelo no Hugging Face Hub (ex: microsoft/DialoGPT-small).Baixe o Modelo: Clique no botão "Baixar" ao lado do modelo desejado e aguarde a conclusão.Inicie o Chat: Vá para a aba "Chat". O modelo que você baixou aparecerá na lista de seleção. Ele será carregado automaticamente na primeira vez que for selecionado.Converse: Digite sua mensagem e pressione Enter para começar a interagir com a IA!📦 Criar Executável (Windows)Para empacotar a aplicação em um único arquivo .exe, use os scripts fornecidos:# Cria um executável simples (mais rápido)
+build-simple.bat
 
-📖 **Guia completo**: Veja [INSTALL.md](INSTALL.md) para instruções detalhadas
-
-## 🎯 Como Usar
-
-### 1️⃣ **Primeira Execução**
-- Execute a aplicação
-- Configure o diretório de modelos (opcional)
-
-### 2️⃣ **Baixar Modelos**
-- Vá para aba **"Modelos"**
-- Clique em **"Atualizar Modelos"**
-- Baixe um modelo (recomendamos DialoGPT-small para começar)
-
-### 3️⃣ **Chat**
-- Volte para aba **"Chat"**
-- Selecione o modelo baixado
-- Digite uma mensagem e clique **"Enviar"**
-
-### 4️⃣ **Configurações**
-- Ajuste parâmetros como temperature, max tokens, etc.
-- Configure temas e preferências
-
-## 📦 Criar Executável
-
-```bash
-# Criar arquivo .exe standalone
-make_exe_simple.bat
-
-# Ou versão avançada
-make_exe.bat
-```
-
-O executável será criado em `dist/SevenX Studio.exe`
-
-## 🏗️ Arquitetura
-
-```
-SevenX Studio/
-├── main.py                 # Ponto de entrada
+# Cria um executável avançado com mais opções
+build-advanced.bat
+O arquivo final estará localizado na pasta dist/.🏗️ Arquitetura do ProjetoSevenX-Studio/
+├── main.py                 # Ponto de entrada da aplicação
 ├── src/
-│   ├── core/              # Módulos principais
-│   │   ├── config.py      # Gerenciamento de configurações
-│   │   ├── logger.py      # Sistema de logging
-│   │   └── ollama_client.py # Motor de IA (SevenXEngine)
-│   └── ui/                # Interface do usuário
-│       ├── main_window.py # Janela principal
-│       ├── chat_widget.py # Widget de chat
-│       ├── models_widget.py # Gerenciamento de modelos
-│       ├── system_monitor.py # Monitor do sistema
-│       └── settings_widget.py # Configurações
-├── assets/                # Recursos (ícones, imagens)
-├── requirements.txt       # Dependências Python
-└── scripts/              # Scripts de build e instalação
-```
-
-## 🤝 Contribuindo
-
-Contribuições são bem-vindas! Por favor:
-
-1. **Fork** o repositório
-2. **Crie** uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. **Commit** suas mudanças (`git commit -m 'Add some AmazingFeature'`)
-4. **Push** para a branch (`git push origin feature/AmazingFeature`)
-5. **Abra** um Pull Request
-
-Veja [CONTRIBUTING.md](CONTRIBUTING.md) para mais detalhes.
-
-## 📸 Screenshots
-
-<div align="center">
-
-### Interface Principal
-![Interface Principal](assets/screenshots/main-interface.png)
-
-### Chat em Ação
-![Chat](assets/screenshots/chat-demo.png)
-
-### Gerenciamento de Modelos
-![Modelos](assets/screenshots/models-management.png)
-
-</div>
-
-## 🐛 Problemas Conhecidos
-
-- **Primeira execução lenta**: Normal, modelos precisam ser carregados
-- **Alto uso de RAM**: Modelos grandes consomem mais memória
-- **GPU não detectada**: Verifique drivers CUDA
-
-Veja [Issues](https://github.com/sevenx-team/sevenx-studio/issues) para problemas conhecidos e soluções.
-
-## 📈 Roadmap
-
-- [ ] **v1.1**: Suporte a mais modelos (Llama, Mistral)
-- [ ] **v1.2**: Plugin system
-- [ ] **v1.3**: API REST externa
-- [ ] **v1.4**: Modo servidor
-- [ ] **v2.0**: Suporte a modelos multimodais
-
-## 📄 Licença
-
-Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
-
-## 🙏 Agradecimentos
-
-- [Hugging Face](https://huggingface.co/) - Pelos modelos e bibliotecas
-- [PyQt](https://www.riverbankcomputing.com/software/pyqt/) - Pela interface gráfica
-- [PyTorch](https://pytorch.org/) - Pelo framework de IA
-- [Transformers](https://github.com/huggingface/transformers) - Pela biblioteca de modelos
-
-## 📞 Suporte
-
-- 🐛 **Bugs**: [GitHub Issues](https://github.com/sevenx-team/sevenx-studio/issues)
-- 💬 **Discussões**: [GitHub Discussions](https://github.com/sevenx-team/sevenx-studio/discussions)
-- 📧 **Email**: support@sevenx.dev
-- 💬 **Discord**: [SevenX Community](https://discord.gg/sevenx)
-
----
-
-<div align="center">
-
-**⭐ Se você gostou do projeto, dê uma estrela! ⭐**
-
-Feito com ❤️ pela equipe SevenX
-
-</div>
+│   ├── core/               # Módulos principais do backend
+│   │   ├── config.py       # Gerenciamento de configurações
+│   │   ├── huggingface_client.py # Camada de compatibilidade (cliente)
+│   │   └── sevenx_engine.py  # O motor de IA principal
+│   └── ui/                 # Módulos da interface gráfica (PyQt6)
+│       ├── main_window.py    # A janela principal
+│       ├── chat_widget_simple.py # O widget de chat
+│       ├── models_widget.py  # O widget de gerenciamento de modelos
+│       ├── system_monitor.py # O widget do monitor de sistema
+│       └── settings_widget.py # O widget de configurações
+├── assets/                 # Ícones, banners e outros recursos visuais
+├── requirements.txt        # Dependências do projeto
+└── scripts/                # Scripts de build e instalação (.bat)
+🤝 ContribuindoContribuições são muito bem-vindas! Se você tem uma ideia ou encontrou um bug, por favor:Faça um Fork do repositório.Crie uma nova Branch (git checkout -b feature/MinhaFeature).Faça o Commit das suas alterações (git commit -m 'feat: Adiciona MinhaFeature').Faça o Push para a sua branch (git push origin feature/MinhaFeature).Abra um Pull Request.Para mais detalhes, veja nosso guia de contribuição CONTRIBUTING.md.📸 Screenshots<div align="center">Interface PrincipalChat em Ação|

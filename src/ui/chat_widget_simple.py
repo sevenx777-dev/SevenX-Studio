@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QTextCursor
 
-# Importa as classes necessárias dos outros módulos do projeto
 from ..core.sevenx_engine import SevenXEngine
 from ..core.config import Config
 
@@ -28,17 +27,13 @@ class ChatMessage(QFrame):
         self.setup_ui(text)
     
     def setup_ui(self, text: str):
-        """Configura a aparência da mensagem."""
-        # Layout principal com alinhamento
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Container para o balão da mensagem
         bubble_layout = QVBoxLayout()
         bubble_frame = QFrame()
         bubble_frame.setLayout(bubble_layout)
         
-        # Header da mensagem (ícone e autor)
         header_layout = QHBoxLayout()
         author_icon = "👤" if self.is_user else "🤖"
         author_name = "Você" if self.is_user else "Assistente"
@@ -49,16 +44,14 @@ class ChatMessage(QFrame):
         header_layout.addWidget(header_label)
         header_layout.addStretch()
         
-        # Corpo da mensagem
         self.text_edit.setPlainText(text)
         self.text_edit.setReadOnly(True)
-        self.text_edit.setMinimumHeight(40) # Altura mínima
+        self.text_edit.setMinimumHeight(40)
         self.text_edit.setStyleSheet("border: none; background: transparent; color: white;")
         
         bubble_layout.addLayout(header_layout)
         bubble_layout.addWidget(self.text_edit)
 
-        # Adiciona o balão ao layout principal, alinhando à direita ou esquerda
         if self.is_user:
             main_layout.addStretch()
             main_layout.addWidget(bubble_frame)
@@ -66,21 +59,12 @@ class ChatMessage(QFrame):
             main_layout.addWidget(bubble_frame)
             main_layout.addStretch()
 
-        # Estilo do balão
         bubble_bg_color = "#2c3e50" if self.is_user else "#34495e"
-        bubble_frame.setStyleSheet(f"""
-            QFrame {{
-                background-color: {bubble_bg_color};
-                border-radius: 12px;
-                padding: 8px;
-            }}
-        """)
+        bubble_frame.setStyleSheet(f"QFrame {{ background-color: {bubble_bg_color}; border-radius: 12px; padding: 8px; }}")
         self.layout().setSizeConstraint(QVBoxLayout.SizeConstraint.SetFixedSize)
 
     def update_text(self, new_text: str):
-        """Atualiza o texto da mensagem e ajusta a altura."""
         self.text_edit.setPlainText(new_text)
-        # Ajusta a altura do QTextEdit ao conteúdo
         doc_height = self.text_edit.document().size().height()
         self.text_edit.setFixedHeight(int(doc_height) + 10)
 
@@ -90,31 +74,27 @@ class ChatWorker(QThread):
     response_completed = pyqtSignal()
     error_occurred = pyqtSignal(str)
     
-    def __init__(self, message: str, model_id: str, config: Dict, ai_engine: SevenXEngine):
+    def __init__(self, messages: List[Dict], model_id: str, config: Dict, ai_engine: SevenXEngine):
         super().__init__()
-        self.message = message
+        self.messages = messages
         self.model_id = model_id
         self.config = config
         self.ai_engine = ai_engine
         self.should_stop = False
     
     def run(self):
-        """Executa a geração da resposta."""
         try:
-            # Usa o método generate_response do motor, que é mais simples
-            full_response = self.ai_engine.generate_response(self.model_id, self.message, self.config)
+            full_response = self.ai_engine.generate_response(self.model_id, self.messages, self.config)
             
             if "Erro:" in full_response:
                 self.error_occurred.emit(full_response)
                 return
 
-            # Simula o streaming palavra por palavra
             words = full_response.split()
             for word in words:
-                if self.should_stop:
-                    break
+                if self.should_stop: break
                 self.response_chunk.emit(word + " ")
-                self.msleep(50)  # Pequena pausa para o efeito de digitação
+                self.msleep(50)
             
         except Exception as e:
             self.error_occurred.emit(f"Erro inesperado no worker: {e}")
@@ -122,7 +102,6 @@ class ChatWorker(QThread):
             self.response_completed.emit()
     
     def stop(self):
-        """Sinaliza para a thread parar a geração."""
         self.should_stop = True
 
 class ChatWidget(QWidget):
@@ -140,7 +119,6 @@ class ChatWidget(QWidget):
         self.load_models()
     
     def setup_ui(self):
-        """Configura a interface gráfica do chat."""
         layout = QHBoxLayout(self)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter)
@@ -192,7 +170,6 @@ class ChatWidget(QWidget):
         params_group = QGroupBox("Parâmetros de Geração")
         params_layout = QVBoxLayout(params_group)
         
-        # Temperature, Max Tokens, Top P...
         self.temperature_spin = self.create_parameter_spinbox(params_layout, "Temperatura:", 0.0, 2.0, 0.1, "chat_settings.temperature", 0.7)
         self.max_tokens_spin = self.create_parameter_spinbox(params_layout, "Max. Tokens:", 1, 8192, 10, "chat_settings.max_tokens", 2048, is_double=False)
         self.top_p_spin = self.create_parameter_spinbox(params_layout, "Top P:", 0.0, 1.0, 0.05, "chat_settings.top_p", 0.9)
@@ -210,7 +187,6 @@ class ChatWidget(QWidget):
         return widget
 
     def create_parameter_spinbox(self, parent_layout, label, min_val, max_val, step, config_key, default_val, is_double=True):
-        """Cria um QSpinBox ou QDoubleSpinBox para um parâmetro."""
         layout = QHBoxLayout()
         layout.addWidget(QLabel(label))
         spinbox = QDoubleSpinBox() if is_double else QSpinBox()
@@ -222,7 +198,6 @@ class ChatWidget(QWidget):
         return spinbox
 
     def load_models(self):
-        """Carrega os modelos instalados no ComboBox."""
         self.model_combo.clear()
         installed_models = self.ai_engine.list_installed_models()
         if not installed_models:
@@ -235,30 +210,26 @@ class ChatWidget(QWidget):
             self.model_combo.addItem(model.name, model.name)
 
     def on_model_selected(self, model_id):
-        """Carrega o modelo selecionado se ainda não estiver carregado."""
         if model_id and not self.ai_engine.loaded_models.get(model_id):
             print(f"Modelo '{model_id}' selecionado. Carregando em segundo plano...")
-            # Idealmente, isso também seria em uma thread para não bloquear a UI
             self.ai_engine.load_model(model_id)
 
     def send_message(self):
-        """Envia a mensagem do usuário para o modelo de IA."""
-        message = self.message_input.text().strip()
-        if not message or (self.current_worker and self.current_worker.isRunning()):
+        message_text = self.message_input.text().strip()
+        if not message_text or (self.current_worker and self.current_worker.isRunning()):
             return
         
-        self.add_message(message, is_user=True)
+        self.add_message_to_ui(message_text, is_user=True)
+        self.add_message_to_history(message_text, is_user=True)
         self.message_input.clear()
         
         model_id = self.model_combo.currentData()
         if not model_id:
-            self.add_message("Erro: Nenhum modelo válido selecionado.", is_user=False)
+            self.add_message_to_ui("Erro: Nenhum modelo válido selecionado.", is_user=False)
             return
         
         self.toggle_input_enabled(False)
-        
-        # Prepara um balão de resposta vazio
-        self.current_response_widget = self.add_message("", is_user=False)
+        self.current_response_widget = self.add_message_to_ui("", is_user=False)
 
         config = {
             "temperature": self.temperature_spin.value(),
@@ -266,50 +237,45 @@ class ChatWidget(QWidget):
             "top_p": self.top_p_spin.value()
         }
         
-        self.current_worker = ChatWorker(message, model_id, config, self.ai_engine)
+        self.current_worker = ChatWorker(self.conversation_history, model_id, config, self.ai_engine)
         self.current_worker.response_chunk.connect(self.update_response)
         self.current_worker.response_completed.connect(self.finalize_response)
         self.current_worker.error_occurred.connect(self.handle_error)
         self.current_worker.start()
 
-    def add_message(self, text: str, is_user: bool) -> Optional[ChatMessage]:
-        """Adiciona um widget de mensagem à área de chat."""
+    def add_message_to_ui(self, text: str, is_user: bool) -> Optional[ChatMessage]:
         message_widget = ChatMessage(text, is_user)
         self.messages_layout.insertWidget(self.messages_layout.count() - 1, message_widget)
         QTimer.singleShot(10, lambda: self.messages_scroll.verticalScrollBar().setValue(self.messages_scroll.verticalScrollBar().maximum()))
-        
-        if not text and not is_user: # Se for uma mensagem de assistente vazia, retorna o widget
-            return message_widget
-        
-        self.conversation_history.append({"role": "user" if is_user else "assistant", "content": text})
+        if not text and not is_user: return message_widget
         return None
 
+    def add_message_to_history(self, text: str, is_user: bool):
+        role = "user" if is_user else "assistant"
+        self.conversation_history.append({"role": role, "content": text})
+
     def update_response(self, chunk: str):
-        """Atualiza o balão de resposta do assistente com um novo pedaço de texto."""
         if self.current_response_widget:
             current_text = self.current_response_widget.text_edit.toPlainText()
             self.current_response_widget.update_text(current_text + chunk)
 
     def finalize_response(self):
-        """Finaliza a geração da resposta."""
         if self.current_response_widget:
             final_text = self.current_response_widget.text_edit.toPlainText()
-            self.conversation_history.append({"role": "assistant", "content": final_text})
+            self.add_message_to_history(final_text, is_user=False)
 
         self.current_worker = None
         self.current_response_widget = None
         self.toggle_input_enabled(True)
 
     def handle_error(self, error_msg: str):
-        """Lida com erros ocorridos durante a geração."""
         if self.current_response_widget:
             self.current_response_widget.update_text(f"Erro: {error_msg}")
         else:
-            self.add_message(f"Erro: {error_msg}", is_user=False)
+            self.add_message_to_ui(f"Erro: {error_msg}", is_user=False)
         self.finalize_response()
 
     def toggle_input_enabled(self, enabled: bool):
-        """Habilita ou desabilita os campos de entrada e o botão."""
         self.message_input.setEnabled(enabled)
         self.send_button.setEnabled(enabled)
         if not enabled:
@@ -323,19 +289,13 @@ class ChatWidget(QWidget):
             self.message_input.setFocus()
 
     def stop_generation(self):
-        """Para a geração de resposta atual."""
-        if self.current_worker:
-            self.current_worker.stop()
+        if self.current_worker: self.current_worker.stop()
 
     def new_conversation(self):
-        """Limpa o histórico e a UI para uma nova conversa."""
-        if self.current_worker and self.current_worker.isRunning():
-            self.current_worker.stop()
-
+        if self.current_worker and self.current_worker.isRunning(): self.current_worker.stop()
         for i in reversed(range(self.messages_layout.count() - 1)):
             widget = self.messages_layout.itemAt(i).widget()
-            if widget:
-                widget.deleteLater()
-        
+            if widget: widget.deleteLater()
         self.conversation_history.clear()
-        self.add_message("Olá! Como posso te ajudar hoje?", is_user=False)
+        self.add_message_to_ui("Olá! Como posso te ajudar hoje?", is_user=False)
+        self.add_message_to_history("Olá! Como posso te ajudar hoje?", is_user=False)
