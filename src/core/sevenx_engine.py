@@ -1,6 +1,6 @@
 """
 Arquivo: sevenx_engine.py
-Descrição: Motor de IA otimizado para menor consumo de memória.
+Descrição: Motor de IA com suporte a modelos Transformers e GGUF (via ctransformers).
 """
 
 import torch
@@ -16,6 +16,8 @@ from datetime import datetime
 try:
     from huggingface_hub import list_models, model_info, hf_hub_download
     from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
+    # Importa o carregador de modelos GGUF
+    from ctransformers import AutoModelForCausalLM as AutoModelForCausalLM_GGUF
     HUGGINGFACE_AVAILABLE = True
 except ImportError:
     HUGGINGFACE_AVAILABLE = False
@@ -24,14 +26,11 @@ from .config import Config
 
 @dataclass
 class ModelInfo:
-    name: str
-    size: int
-    path: str
-    modified_at: str
-    details: Dict
-    status: str = "installed"
+    name: str; size: int; path: str; modified_at: str; details: Dict; status: str = "installed"
 
 class SevenXEngine:
+    """Motor de IA com suporte a múltiplos backends: Transformers e CTransformers (GGUF)."""
+    
     def __init__(self, config: Config):
         self.config = config
         self.models_dir = config.models_directory
@@ -39,34 +38,94 @@ class SevenXEngine:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"SevenXEngine inicializado. Usando device: {self.device}")
 
+    def _find_gguf_file(self, model_dir: Path) -> Optional[Path]:
+        """Encontra o primeiro arquivo .gguf em um diretório."""
+        gguf_files = list(model_dir.glob("*.gguf"))
+        return gguf_files[0] if gguf_files else None
+
     def load_model(self, model_id: str) -> bool:
         if model_id in self.loaded_models: return True
+        
         model_dir_name = model_id.replace('/', '__')
         model_dir = self.models_dir / model_dir_name
         if not model_dir.exists(): return False
         
         token = self.config.get("hf_token") or None
         print(f"Carregando modelo {model_id} de {model_dir}...")
+
         try:
-            tokenizer = AutoTokenizer.from_pretrained(str(model_dir), token=token)
-            # OTIMIZAÇÃO: Usa menos RAM ao carregar o modelo na CPU.
-            model = AutoModelForCausalLM.from_pretrained(
-                str(model_dir), 
-                token=token, 
-                low_cpu_mem_usage=True
-            )
-            model.to(self.device)
+            gguf_file_path = self._find_gguf_file(model_dir)
             
-            if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
-            if not getattr(tokenizer, 'chat_template', None) and not getattr(tokenizer, 'default_chat_template', None):
-                tokenizer.chat_template = None
-            
-            self.loaded_models[model_id] = {"model": model, "tokenizer": tokenizer}
-            print(f"Modelo {model_id} carregado com sucesso.")
+            if gguf_file_path:
+                # --- Carregamento de Modelo GGUF ---
+                print(f"Arquivo GGUF detectado: {gguf_file_path.name}. Carregando com CTransformers...")
+                model = AutoModelForCausalLM_GGUF.from_pretrained(
+                    str(gguf_file_path),
+                    model_type='llama', # Tipo genérico, funciona para a maioria
+                    context_length=self.config.get("chat_settings.max_tokens", 2048)
+                )
+                self.loaded_models[model_id] = {"model": model, "type": "gguf"}
+                print(f"Modelo GGUF {model_id} carregado com sucesso no CPU.")
+            else:
+                # --- Carregamento de Modelo Transformers Padrão ---
+                print("Carregando com a biblioteca Transformers...")
+                tokenizer = AutoTokenizer.from_pretrained(str(model_dir), token=token)
+                model = AutoModelForCausalLM.from_pretrained(
+                    str(model_dir), 
+                    token=token, 
+                    low_cpu_mem_usage=True
+                )
+                model.to(self.device)
+                if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
+                if not getattr(tokenizer, 'chat_template', None): tokenizer.chat_template = None
+                self.loaded_models[model_id] = {"model": model, "tokenizer": tokenizer, "type": "transformers"}
+                print(f"Modelo Transformers {model_id} carregado com sucesso.")
+
             return True
         except Exception as e:
-            print(f"Erro ao carregar o modelo {model_id}: {e}"); return False
+            print(f"Erro ao carregar o modelo {model_id}: {e}")
+            traceback.print_exc()
+            return False
 
+    def generate_stream(self, model_id: str, messages: List[Dict], options: Optional[Dict] = None) -> Generator[str, None, None]:
+        if model_id not in self.loaded_models:
+            if not self.load_model(model_id):
+                yield f"Erro: Falha ao carregar o modelo {model_id}."; return
+        
+        model_data = self.loaded_models[model_id]
+        opts = options or {}
+
+        try:
+            if model_data["type"] == "gguf":
+                # --- Geração com Modelo GGUF ---
+                model = model_data["model"]
+                # CTransformers espera uma string de prompt simples
+                prompt = "\n".join([msg["content"] for msg in messages])
+                stream_generator = model(prompt, stream=True, **opts)
+                for chunk in stream_generator:
+                    yield chunk
+            else:
+                # --- Geração com Modelo Transformers ---
+                model, tokenizer = model_data["model"], model_data["tokenizer"]
+                prompt_text = ""
+                if tokenizer.chat_template:
+                    prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                else:
+                    for message in messages:
+                        prompt_text += message["content"] + tokenizer.eos_token
+                
+                inputs = tokenizer([prompt_text], return_tensors="pt").to(self.device)
+                streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+                generation_kwargs = {"input_ids": inputs.input_ids, "attention_mask": inputs.attention_mask, "streamer": streamer, **opts}
+                thread = Thread(target=model.generate, kwargs=generation_kwargs)
+                thread.start()
+                for new_text in streamer:
+                    yield new_text
+        except Exception as e:
+            print(f"Erro detalhado na geração de stream: {e}"); traceback.print_exc()
+            yield f"Erro durante a geração de texto: {e}"
+
+    # --- Outros métodos (sem alterações significativas) ---
     def is_available(self) -> bool:
         try:
             torch.tensor([1.0]); return True
@@ -155,36 +214,6 @@ class SevenXEngine:
             except Exception as e:
                 print(f"Erro ao remover o diretório do modelo {model_id}: {e}"); return False
         return False
-
-    def generate_stream(self, model_id: str, messages: List[Dict], options: Optional[Dict] = None) -> Generator[str, None, None]:
-        if model_id not in self.loaded_models:
-            if not self.load_model(model_id):
-                yield f"Erro: Falha ao carregar o modelo {model_id}."; return
-        
-        model_data = self.loaded_models[model_id]
-        model, tokenizer = model_data["model"], model_data["tokenizer"]
-        opts = options or {}
-
-        try:
-            prompt_text = ""
-            if tokenizer.chat_template:
-                prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            else:
-                for message in messages:
-                    prompt_text += message["content"] + tokenizer.eos_token
-            
-            if not prompt_text:
-                yield "Erro: Não foi possível formatar o prompt para o modelo."; return
-
-            inputs = tokenizer([prompt_text], return_tensors="pt").to(self.device)
-            streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-            generation_kwargs = {"input_ids": inputs.input_ids, "attention_mask": inputs.attention_mask, "streamer": streamer, "max_new_tokens": opts.get("max_new_tokens", 1024), "temperature": opts.get("temperature", 0.7), "top_p": opts.get("top_p", 0.9), "top_k": opts.get("top_k", 50), "repetition_penalty": opts.get("repetition_penalty", 1.1), "do_sample": True, "pad_token_id": tokenizer.eos_token_id}
-            thread = Thread(target=model.generate, kwargs=generation_kwargs)
-            thread.start()
-            for new_text in streamer: yield new_text
-        except Exception as e:
-            print(f"Erro detalhado na geração de stream: {e}"); traceback.print_exc()
-            yield f"Erro durante a geração de texto: {e}"
 
     def cleanup(self):
         print("Limpando recursos do motor de IA...")
