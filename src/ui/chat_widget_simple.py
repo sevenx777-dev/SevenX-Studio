@@ -1,6 +1,6 @@
 """
 Arquivo: chat_widget_simple.py
-Descrição: Widget de chat com suporte a múltiplos serviços (SevenX Engine e Ollama).
+Descrição: Widget de chat com correção para o erro de runtime ao limpar a conversa.
 """
 import json
 from datetime import datetime
@@ -163,15 +163,10 @@ class ChatWidget(QWidget):
         
         self.model_combo.setEnabled(True)
         for model in models:
-            # **CORREÇÃO AQUI**: Verifica se 'model' é um objeto ou um dicionário
             if isinstance(model, ModelInfo):
-                # É um objeto ModelInfo do SevenX Engine
-                name = model.name
-                model_id = model.name
+                name = model.name; model_id = model.name
             else:
-                # É um dicionário do Ollama Client
-                name = model.get('name')
-                model_id = model.get('id')
+                name = model.get('name'); model_id = model.get('id')
             
             if name and model_id:
                 self.model_combo.addItem(name, model_id)
@@ -259,10 +254,12 @@ class ChatWidget(QWidget):
             self.current_response_widget.update_text(current_text + chunk)
 
     def finalize_response(self):
+        # **CORREÇÃO AQUI**: Verifica se o widget ainda existe antes de o aceder.
         if self.current_response_widget:
             final_text = self.current_response_widget.text_edit.toPlainText()
             if final_text.strip():
                 self.add_message_to_history(final_text, is_user=False)
+        
         self.current_worker = None
         self.current_response_widget = None
         self.toggle_input_enabled(True)

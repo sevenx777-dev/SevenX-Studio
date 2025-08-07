@@ -4,7 +4,7 @@ Janela principal da aplicação SevenX Studio
 
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QTabWidget, QSplitter, QStatusBar, QMenuBar, 
-                             QToolBar, QLabel, QPushButton)
+                             QToolBar, QLabel, QPushButton, QMessageBox)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
 
@@ -15,7 +15,6 @@ from .system_monitor import SystemMonitor
 from ..core.config import Config
 from ..core.logger import setup_logger
 from ..core.sevenx_engine import SevenXEngine
-# **NOVO**: Importa o cliente Ollama
 from ..core.ollama_client import OllamaClient
 
 class MainWindow(QMainWindow):
@@ -26,9 +25,8 @@ class MainWindow(QMainWindow):
         self.config = config
         self.logger = setup_logger(__name__)
         
-        # Inicializa ambos os motores
         self.ai_engine = SevenXEngine(config)
-        self.ollama_client = OllamaClient(config) # **NOVO**
+        self.ollama_client = OllamaClient(config)
         
         self.setWindowTitle("SevenX Studio - Local AI Platform")
         self.setMinimumSize(1000, 700)
@@ -45,23 +43,22 @@ class MainWindow(QMainWindow):
         self.apply_theme()
         
         self.update_timer = QTimer()
-        self.update_timer.timeout.connect(self.update_system_info)
+        self.update_timer.timeout.connect(self.update_statusbar_info)
         self.update_timer.start(5000)
     
     def setup_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
-        main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_layout.addWidget(main_splitter)
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal) # Tornar acessível
+        main_layout.addWidget(self.main_splitter)
         
-        self.system_monitor = SystemMonitor(self.config, self.ai_engine)
-        main_splitter.addWidget(self.system_monitor)
+        self.system_monitor = SystemMonitor(self.config, self.ai_engine, self.ollama_client)
+        self.main_splitter.addWidget(self.system_monitor)
         
         self.tab_widget = QTabWidget()
-        main_splitter.addWidget(self.tab_widget)
+        self.main_splitter.addWidget(self.tab_widget)
         
-        # **ALTERADO**: Passa o cliente Ollama para o widget de chat
         self.chat_widget = ChatWidget(self.config, self.ai_engine, self.ollama_client)
         self.tab_widget.addTab(self.chat_widget, "💬 Chat")
         
@@ -69,10 +66,26 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.models_widget, "🤖 Modelos")
         
         self.settings_widget = SettingsWidget(self.config)
+        self.settings_widget.settings_changed.connect(self.on_settings_changed)
         self.tab_widget.addTab(self.settings_widget, "⚙️ Configurações")
         
-        main_splitter.setSizes([280, 920])
-        main_splitter.setCollapsible(0, True)
+        self.main_splitter.setSizes([self.config.get("ui_settings.sidebar_width"), 920])
+        self.main_splitter.setCollapsible(0, True)
+
+    def on_settings_changed(self):
+        """Aplica as configurações que podem ser mudadas em tempo real."""
+        print("Aplicando configurações alteradas na janela principal...")
+        
+        sidebar_width = self.config.get("ui_settings.sidebar_width")
+        current_sizes = self.main_splitter.sizes()
+        self.main_splitter.setSizes([sidebar_width, current_sizes[1]])
+
+        show_monitor = self.config.get("ui_settings.show_system_info")
+        self.system_monitor.setVisible(show_monitor)
+        
+        QMessageBox.information(self, "Configurações Aplicadas",
+                                "Algumas alterações, como o tema e o tamanho da fonte, "
+                                "podem exigir que a aplicação seja reiniciada para terem efeito completo.")
 
     def setup_menu(self):
         menubar = self.menuBar()
@@ -111,8 +124,8 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_label = QLabel("Pronto")
-        self.connection_label = QLabel("Desconectado")
-        self.models_count_label = QLabel("0 modelos")
+        self.connection_label = QLabel("Motor IA: --")
+        self.models_count_label = QLabel("0 modelos locais")
         self.status_bar.addWidget(self.status_label)
         self.status_bar.addPermanentWidget(self.models_count_label)
         self.status_bar.addPermanentWidget(self.connection_label)
@@ -134,7 +147,7 @@ class MainWindow(QMainWindow):
                 QPushButton:pressed { background-color: #005a9e; }
             """)
 
-    def update_system_info(self):
+    def update_statusbar_info(self):
         try:
             if self.ai_engine.is_available():
                 self.connection_label.setText("Motor IA: Ativo")
@@ -143,12 +156,11 @@ class MainWindow(QMainWindow):
                 self.connection_label.setText("Motor IA: Inativo")
                 self.connection_label.setStyleSheet("color: red;")
             models = self.ai_engine.list_installed_models()
-            self.models_count_label.setText(f"{len(models)} modelos")
+            self.models_count_label.setText(f"{len(models)} modelos locais")
         except Exception:
             pass
 
     def show_about(self):
-        from PyQt6.QtWidgets import QMessageBox
         QMessageBox.about(self, "Sobre SevenX Studio", "<h3>SevenX Studio v1.0.0</h3><p>Uma plataforma moderna para IA local.</p>")
 
     def closeEvent(self, event):

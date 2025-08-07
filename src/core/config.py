@@ -1,6 +1,6 @@
 """
 Arquivo: config.py
-Descrição: Classe para gerenciar as configurações da aplicação.
+Descrição: Classe robusta para gerenciar as configurações da aplicação.
 """
 
 import json
@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Dict, Any
 
 class Config:
+    """Classe robusta para gerenciar as configurações da aplicação."""
+    
     def __init__(self):
         self.config_dir = Path.home() / ".sevenx_studio"
         self.config_file = self.config_dir / "config.json"
@@ -16,14 +18,11 @@ class Config:
         self.conversations_dir = self.config_dir / "conversations"
         
         self._create_directories()
-        self.settings = self._load_config()
-    
-    def _create_directories(self):
-        for directory in [self.config_dir, self.default_models_path, self.logs_dir, self.conversations_dir]:
-            directory.mkdir(parents=True, exist_ok=True)
-    
-    def _load_config(self) -> Dict[str, Any]:
-        default_config = {
+        self.settings = self._load_from_file()
+
+    def _get_default_config(self) -> Dict[str, Any]:
+        """Retorna um dicionário com todas as configurações padrão da aplicação."""
+        return {
             "theme": "dark",
             "language": "pt-BR",
             "models_directory": str(self.default_models_path),
@@ -44,31 +43,47 @@ class Config:
                 "sidebar_width": 250,
                 "font_size": 12,
                 "show_system_info": True,
-                "lite_mode": False # OTIMIZAÇÃO: Modo Leve para PCs com menos recursos
+                "lite_mode": False
             }
         }
-        
-        if self.config_file.exists():
-            try:
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    loaded_config = json.load(f)
-                    for key, value in loaded_config.items():
-                        if isinstance(value, dict) and key in default_config:
-                            default_config[key].update(value)
-                        else:
-                            default_config[key] = value
-            except Exception as e:
-                print(f"Erro ao carregar o arquivo de configuração: {e}")
-        
-        return default_config
-    
-    def save_config(self):
+
+    def _load_from_file(self) -> Dict[str, Any]:
+        """Carrega as configurações do arquivo, mesclando com os padrões."""
+        defaults = self._get_default_config()
+        if not self.config_file.exists():
+            print("Arquivo de configuração não encontrado. Usando padrões.")
+            return defaults
+
         try:
+            print(f"Carregando configurações de: {self.config_file}")
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                loaded_config = json.load(f)
+            
+            # Mescla os valores salvos sobre os padrões para garantir que novas chaves sejam adicionadas
+            for key, value in loaded_config.items():
+                if isinstance(value, dict) and key in defaults:
+                    defaults[key].update(value)
+                else:
+                    defaults[key] = value
+        except Exception as e:
+            print(f"Erro ao carregar config.json, usando padrões: {e}")
+            return self._get_default_config()
+        
+        print("Configurações carregadas com sucesso.")
+        return defaults
+
+    def save_config(self) -> bool:
+        """Salva o estado atual das configurações no arquivo JSON e retorna True em caso de sucesso."""
+        try:
+            print(f"Salvando configurações em: {self.config_file}")
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.settings, f, indent=2, ensure_ascii=False)
+            print("Configurações salvas com sucesso!")
+            return True
         except Exception as e:
-            print(f"Erro ao salvar as configurações: {e}")
-    
+            print(f"ERRO AO SALVAR CONFIGURAÇÕES: {e}")
+            return False
+
     def get(self, key: str, default: Any = None) -> Any:
         keys = key.split('.')
         value = self.settings
@@ -80,13 +95,22 @@ class Config:
         return value
     
     def set(self, key: str, value: Any):
+        """Define um valor de configuração na memória (não salva no arquivo)."""
         keys = key.split('.')
         config = self.settings
         for k in keys[:-1]:
             config = config.setdefault(k, {})
         config[keys[-1]] = value
+
+    def reset_to_defaults(self):
+        """Restaura as configurações para os valores padrão e salva no arquivo."""
+        self.settings = self._get_default_config()
         self.save_config()
-    
+
     @property
     def models_directory(self) -> Path:
         return Path(self.get("models_directory"))
+
+    def _create_directories(self):
+        for directory in [self.config_dir, self.default_models_path, self.logs_dir, self.conversations_dir]:
+            directory.mkdir(parents=True, exist_ok=True)

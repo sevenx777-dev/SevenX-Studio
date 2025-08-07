@@ -1,23 +1,19 @@
 """
-Widget para monitoramento do sistema, com suporte a GPU NVIDIA.
+Widget para monitoramento do sistema, com Modo Leve e status de Ollama.
 """
 
 import psutil
-import platform
 import os
-from datetime import datetime
 from typing import Dict, List
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QProgressBar, QGroupBox, QTextEdit, QFrame)
+                             QProgressBar, QGroupBox, QFrame)
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
 
-# Importa as classes do projeto
 from ..core.config import Config
 from ..core.sevenx_engine import SevenXEngine
+from ..core.ollama_client import OllamaClient
 
-# Tenta importar a biblioteca da NVIDIA; se não existir, a funcionalidade da GPU é desativada
 try:
     import pynvml
     PYNVML_AVAILABLE = True
@@ -64,10 +60,11 @@ class ResourceBar(QFrame):
 class SystemMonitor(QWidget):
     """Widget para monitoramento de CPU, RAM, Disco e GPU."""
     
-    def __init__(self, config: Config, ai_engine: SevenXEngine):
+    def __init__(self, config: Config, ai_engine: SevenXEngine, ollama_client: OllamaClient):
         super().__init__()
         self.config = config
         self.ai_engine = ai_engine
+        self.ollama_client = ollama_client
         self.nvml_handle = None
         self.current_process = psutil.Process(os.getpid())
         
@@ -78,14 +75,22 @@ class SystemMonitor(QWidget):
         
         self.update_timer = QTimer(self)
         self.update_timer.timeout.connect(self.update_info)
-        self.update_timer.start(2000) # Atualiza a cada 2 segundos
+        self.set_update_interval() # Define o intervalo inicial
+        # Conecta o sinal de mudança de configurações à atualização do intervalo
+        if hasattr(self.config, 'settings_changed'): # Verificação de segurança
+            self.config.settings_changed.connect(self.set_update_interval)
         self.update_info()
+
+    def set_update_interval(self):
+        """Ajusta a frequência de atualização com base no Modo Leve."""
+        interval = 5000 if self.config.get("ui_settings.lite_mode") else 2000
+        self.update_timer.start(interval)
+        print(f"Intervalo do monitor de sistema definido para {interval}ms.")
 
     def _init_nvml(self):
         """Inicializa a biblioteca pynvml para monitoramento da GPU."""
         try:
             pynvml.nvmlInit()
-            # Pega o handle da primeira GPU
             self.nvml_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             print("Monitoramento de GPU NVIDIA ativado.")
         except Exception as e:
@@ -102,7 +107,6 @@ class SystemMonitor(QWidget):
         title_label.setStyleSheet("font-size: 14px; font-weight: bold; margin-bottom: 5px;")
         layout.addWidget(title_label)
         
-        # Barras de Recursos
         self.cpu_bar = ResourceBar("CPU")
         self.memory_bar = ResourceBar("Memória (RAM)")
         self.disk_bar = ResourceBar("Disco (Principal)")
@@ -110,7 +114,6 @@ class SystemMonitor(QWidget):
         layout.addWidget(self.memory_bar)
         layout.addWidget(self.disk_bar)
 
-        # Grupo da GPU (só aparece se houver uma GPU NVIDIA)
         if self.nvml_handle:
             gpu_group = QGroupBox("GPU NVIDIA")
             gpu_layout = QVBoxLayout(gpu_group)
@@ -122,11 +125,10 @@ class SystemMonitor(QWidget):
             gpu_layout.addWidget(self.gpu_temp_label)
             layout.addWidget(gpu_group)
         
-        # Grupo de Status do App
         app_status_group = QGroupBox("Status da Aplicação")
         app_status_layout = QVBoxLayout(app_status_group)
         self.app_process_label = QLabel("Uso do App: --")
-        self.model_status_label = QLabel("Modelo Carregado: Nenhum")
+        self.model_status_label = QLabel("Motor Ativo: Nenhum")
         app_status_layout.addWidget(self.app_process_label)
         app_status_layout.addWidget(self.model_status_label)
         layout.addWidget(app_status_group)
@@ -136,35 +138,35 @@ class SystemMonitor(QWidget):
     def update_info(self):
         """Atualiza todas as informações de monitoramento."""
         try:
-            # CPU, RAM e Disco
             self.cpu_bar.set_value(psutil.cpu_percent(interval=None))
             self.memory_bar.set_value(psutil.virtual_memory().percent)
             self.disk_bar.set_value(psutil.disk_usage('/').percent)
 
-            # GPU (se disponível)
             if self.nvml_handle:
                 gpu_util = pynvml.nvmlDeviceGetUtilizationRates(self.nvml_handle)
                 self.gpu_util_bar.set_value(gpu_util.gpu)
-                
                 gpu_mem = pynvml.nvmlDeviceGetMemoryInfo(self.nvml_handle)
                 self.gpu_mem_bar.set_value((gpu_mem.used / gpu_mem.total) * 100)
-                
                 gpu_temp = pynvml.nvmlDeviceGetTemperature(self.nvml_handle, pynvml.NVML_TEMPERATURE_GPU)
                 self.gpu_temp_label.setText(f"Temperatura: {gpu_temp} °C")
 
-            # Status da Aplicação
             app_cpu = self.current_process.cpu_percent() / psutil.cpu_count()
             app_mem = self.current_process.memory_info().rss
             self.app_process_label.setText(f"Uso do App: {app_cpu:.1f}% CPU, {self.format_bytes(app_mem)} RAM")
 
-            loaded_models = list(self.ai_engine.loaded_models.keys())
-            if loaded_models:
-                self.model_status_label.setText(f"Modelo Carregado: {loaded_models[0]}")
+            if self.ollama_client and self.ollama_client.is_server_reachable():
+                self.model_status_label.setText("Motor Ativo: Conectado ao Ollama")
             else:
-                self.model_status_label.setText("Modelo Carregado: Nenhum")
+                loaded_models = list(self.ai_engine.loaded_models.keys())
+                if loaded_models:
+                    self.model_status_label.setText(f"Motor Ativo: {loaded_models[0]}")
+                else:
+                    self.model_status_label.setText("Motor Ativo: Nenhum")
 
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            self.update_timer.stop()
+            print("Processo do App não encontrado, parando o monitor.")
         except Exception as e:
-            # Desativa o timer em caso de erro para não sobrecarregar
             self.update_timer.stop()
             print(f"Erro no monitor do sistema, desativando: {e}")
 
