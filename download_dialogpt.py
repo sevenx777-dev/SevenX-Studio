@@ -18,7 +18,7 @@ def download_dialogpt():
     print("=" * 50)
     
     try:
-        from src.core.ollama_client import SevenXEngine
+        from src.core.sevenx_engine import SevenXEngine
         from src.core.config import Config
         
         # Inicializar

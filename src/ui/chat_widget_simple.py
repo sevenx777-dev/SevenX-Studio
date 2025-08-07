@@ -1,299 +1,341 @@
 """
-Widget de chat simplificado para evitar erros
+Arquivo: chat_widget_simple.py
+Descrição: Widget de chat aprimorado para interação com modelos de IA.
 """
-
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, 
-                            QLineEdit, QPushButton, QComboBox, QLabel, 
-                            QSplitter, QScrollArea, QFrame, QSlider,
-                            QSpinBox, QDoubleSpinBox, QGroupBox)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QFont, QTextCursor, QPixmap
 
 import json
 from datetime import datetime
 from typing import Dict, List, Optional
 
-class SimpleChatWidget(QWidget):
-    """Widget de chat simplificado"""
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, 
+                             QLineEdit, QPushButton, QComboBox, QLabel, 
+                             QSplitter, QScrollArea, QFrame, QSlider,
+                             QSpinBox, QDoubleSpinBox, QGroupBox)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt6.QtGui import QFont, QTextCursor
+
+# Importa as classes necessárias dos outros módulos do projeto
+from ..core.sevenx_engine import SevenXEngine
+from ..core.config import Config
+
+class ChatMessage(QFrame):
+    """Widget customizado para exibir uma única mensagem no chat."""
     
-    def __init__(self, config, ai_engine):
+    def __init__(self, text: str, is_user: bool):
+        super().__init__()
+        self.is_user = is_user
+        self.text_edit = QTextEdit()
+        self.setup_ui(text)
+    
+    def setup_ui(self, text: str):
+        """Configura a aparência da mensagem."""
+        # Layout principal com alinhamento
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+
+        # Container para o balão da mensagem
+        bubble_layout = QVBoxLayout()
+        bubble_frame = QFrame()
+        bubble_frame.setLayout(bubble_layout)
+        
+        # Header da mensagem (ícone e autor)
+        header_layout = QHBoxLayout()
+        author_icon = "👤" if self.is_user else "🤖"
+        author_name = "Você" if self.is_user else "Assistente"
+        author_color = "#0099ff" if self.is_user else "#00a86b"
+
+        header_label = QLabel(f"{author_icon} {author_name}")
+        header_label.setStyleSheet(f"font-weight: bold; color: {author_color};")
+        header_layout.addWidget(header_label)
+        header_layout.addStretch()
+        
+        # Corpo da mensagem
+        self.text_edit.setPlainText(text)
+        self.text_edit.setReadOnly(True)
+        self.text_edit.setMinimumHeight(40) # Altura mínima
+        self.text_edit.setStyleSheet("border: none; background: transparent; color: white;")
+        
+        bubble_layout.addLayout(header_layout)
+        bubble_layout.addWidget(self.text_edit)
+
+        # Adiciona o balão ao layout principal, alinhando à direita ou esquerda
+        if self.is_user:
+            main_layout.addStretch()
+            main_layout.addWidget(bubble_frame)
+        else:
+            main_layout.addWidget(bubble_frame)
+            main_layout.addStretch()
+
+        # Estilo do balão
+        bubble_bg_color = "#2c3e50" if self.is_user else "#34495e"
+        bubble_frame.setStyleSheet(f"""
+            QFrame {{
+                background-color: {bubble_bg_color};
+                border-radius: 12px;
+                padding: 8px;
+            }}
+        """)
+        self.layout().setSizeConstraint(QVBoxLayout.SizeConstraint.SetFixedSize)
+
+    def update_text(self, new_text: str):
+        """Atualiza o texto da mensagem e ajusta a altura."""
+        self.text_edit.setPlainText(new_text)
+        # Ajusta a altura do QTextEdit ao conteúdo
+        doc_height = self.text_edit.document().size().height()
+        self.text_edit.setFixedHeight(int(doc_height) + 10)
+
+class ChatWorker(QThread):
+    """Worker em thread separada para gerar respostas sem bloquear a UI."""
+    response_chunk = pyqtSignal(str)
+    response_completed = pyqtSignal()
+    error_occurred = pyqtSignal(str)
+    
+    def __init__(self, message: str, model_id: str, config: Dict, ai_engine: SevenXEngine):
+        super().__init__()
+        self.message = message
+        self.model_id = model_id
+        self.config = config
+        self.ai_engine = ai_engine
+        self.should_stop = False
+    
+    def run(self):
+        """Executa a geração da resposta."""
+        try:
+            # Usa o método generate_response do motor, que é mais simples
+            full_response = self.ai_engine.generate_response(self.model_id, self.message, self.config)
+            
+            if "Erro:" in full_response:
+                self.error_occurred.emit(full_response)
+                return
+
+            # Simula o streaming palavra por palavra
+            words = full_response.split()
+            for word in words:
+                if self.should_stop:
+                    break
+                self.response_chunk.emit(word + " ")
+                self.msleep(50)  # Pequena pausa para o efeito de digitação
+            
+        except Exception as e:
+            self.error_occurred.emit(f"Erro inesperado no worker: {e}")
+        finally:
+            self.response_completed.emit()
+    
+    def stop(self):
+        """Sinaliza para a thread parar a geração."""
+        self.should_stop = True
+
+class ChatWidget(QWidget):
+    """Widget principal do chat."""
+    
+    def __init__(self, config: Config, ai_engine: SevenXEngine):
         super().__init__()
         self.config = config
         self.ai_engine = ai_engine
         self.conversation_history = []
+        self.current_worker = None
+        self.current_response_widget = None
         
         self.setup_ui()
         self.load_models()
     
     def setup_ui(self):
-        """Configurar interface do usuário"""
+        """Configura a interface gráfica do chat."""
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        
-        # Splitter principal
         splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter)
         
-        # Área de chat
-        chat_area = self.create_chat_area()
-        splitter.addWidget(chat_area)
+        splitter.addWidget(self.create_chat_area())
+        splitter.addWidget(self.create_settings_panel())
         
-        # Painel de configurações
-        settings_panel = self.create_settings_panel()
-        splitter.addWidget(settings_panel)
-        
-        # Configurar proporções
         splitter.setSizes([800, 300])
     
     def create_chat_area(self) -> QWidget:
-        """Criar área de chat"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        # Área de mensagens (texto simples)
-        self.chat_display = QTextEdit()
-        self.chat_display.setReadOnly(True)
-        self.chat_display.setStyleSheet("""
-            QTextEdit {
-                background-color: #2b2b2b;
-                color: white;
-                border: 1px solid #555555;
-                border-radius: 8px;
-                padding: 10px;
-                font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 12px;
-            }
-        """)
-        layout.addWidget(self.chat_display)
+        self.messages_scroll = QScrollArea()
+        self.messages_scroll.setWidgetResizable(True)
+        self.messages_scroll.setStyleSheet("background-color: #2b2b2b; border: none;")
         
-        # Área de entrada
+        messages_container = QWidget()
+        self.messages_layout = QVBoxLayout(messages_container)
+        self.messages_layout.addStretch()
+        
+        self.messages_scroll.setWidget(messages_container)
+        layout.addWidget(self.messages_scroll)
+        
         input_layout = QHBoxLayout()
-        
         self.message_input = QLineEdit()
         self.message_input.setPlaceholderText("Digite sua mensagem...")
         self.message_input.returnPressed.connect(self.send_message)
-        self.message_input.setStyleSheet("""
-            QLineEdit {
-                background-color: #404040;
-                color: white;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                padding: 8px;
-                font-size: 12px;
-            }
-        """)
+        input_layout.addWidget(self.message_input)
         
         self.send_button = QPushButton("Enviar")
         self.send_button.clicked.connect(self.send_message)
-        self.send_button.setStyleSheet("""
-            QPushButton {
-                background-color: #0078d4;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #106ebe;
-            }
-        """)
-        
-        input_layout.addWidget(self.message_input)
         input_layout.addWidget(self.send_button)
         
         layout.addLayout(input_layout)
-        
         return widget
     
     def create_settings_panel(self) -> QWidget:
-        """Criar painel de configurações"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        # Seleção de modelo
         model_group = QGroupBox("Modelo")
         model_layout = QVBoxLayout(model_group)
-        
         self.model_combo = QComboBox()
-        self.model_combo.setStyleSheet("""
-            QComboBox {
-                background-color: #404040;
-                color: white;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                padding: 5px;
-            }
-        """)
+        self.model_combo.currentTextChanged.connect(self.on_model_selected)
         model_layout.addWidget(self.model_combo)
-        
         layout.addWidget(model_group)
         
-        # Parâmetros do modelo
-        params_group = QGroupBox("Parâmetros")
+        params_group = QGroupBox("Parâmetros de Geração")
         params_layout = QVBoxLayout(params_group)
         
-        # Temperature
-        temp_layout = QHBoxLayout()
-        temp_layout.addWidget(QLabel("Temperature:"))
-        self.temperature_spin = QDoubleSpinBox()
-        self.temperature_spin.setRange(0.0, 2.0)
-        self.temperature_spin.setSingleStep(0.1)
-        self.temperature_spin.setValue(0.8)  # Mais criativo
-        temp_layout.addWidget(self.temperature_spin)
-        params_layout.addLayout(temp_layout)
-        
-        # Max Tokens
-        tokens_layout = QHBoxLayout()
-        tokens_layout.addWidget(QLabel("Max Tokens:"))
-        self.max_tokens_spin = QSpinBox()
-        self.max_tokens_spin.setRange(50, 1000)
-        self.max_tokens_spin.setValue(200)  # Mais tokens para respostas melhores
-        tokens_layout.addWidget(self.max_tokens_spin)
-        params_layout.addLayout(tokens_layout)
+        # Temperature, Max Tokens, Top P...
+        self.temperature_spin = self.create_parameter_spinbox(params_layout, "Temperatura:", 0.0, 2.0, 0.1, "chat_settings.temperature", 0.7)
+        self.max_tokens_spin = self.create_parameter_spinbox(params_layout, "Max. Tokens:", 1, 8192, 10, "chat_settings.max_tokens", 2048, is_double=False)
+        self.top_p_spin = self.create_parameter_spinbox(params_layout, "Top P:", 0.0, 1.0, 0.05, "chat_settings.top_p", 0.9)
         
         layout.addWidget(params_group)
         
-        # Botões de ação
         actions_group = QGroupBox("Ações")
         actions_layout = QVBoxLayout(actions_group)
-        
         self.new_chat_btn = QPushButton("Nova Conversa")
         self.new_chat_btn.clicked.connect(self.new_conversation)
         actions_layout.addWidget(self.new_chat_btn)
-        
-        self.clear_chat_btn = QPushButton("Limpar Chat")
-        self.clear_chat_btn.clicked.connect(self.clear_chat)
-        actions_layout.addWidget(self.clear_chat_btn)
-        
         layout.addWidget(actions_group)
         
         layout.addStretch()
-        
         return widget
-    
+
+    def create_parameter_spinbox(self, parent_layout, label, min_val, max_val, step, config_key, default_val, is_double=True):
+        """Cria um QSpinBox ou QDoubleSpinBox para um parâmetro."""
+        layout = QHBoxLayout()
+        layout.addWidget(QLabel(label))
+        spinbox = QDoubleSpinBox() if is_double else QSpinBox()
+        spinbox.setRange(min_val, max_val)
+        if is_double: spinbox.setSingleStep(step)
+        spinbox.setValue(self.config.get(config_key, default_val))
+        layout.addWidget(spinbox)
+        parent_layout.addLayout(layout)
+        return spinbox
+
     def load_models(self):
-        """Carregar lista de modelos disponíveis"""
-        try:
-            # Obter modelos instalados
-            installed_models = self.ai_engine.list_models()
-            
-            self.model_combo.clear()
-            
-            if not installed_models:
-                self.model_combo.addItem("Nenhum modelo instalado", "")
-                return
-            
-            for model in installed_models:
-                self.model_combo.addItem(model.name, model.name)
-            
-            # Selecionar primeiro modelo
-            if self.model_combo.count() > 0:
-                self.model_combo.setCurrentIndex(0)
-                    
-        except Exception as e:
-            print(f"Erro ao carregar modelos: {e}")
-            self.model_combo.clear()
-            self.model_combo.addItem("Erro ao carregar modelos", "")
-    
-    def send_message(self):
-        """Enviar mensagem para o modelo"""
-        message = self.message_input.text().strip()
-        if not message:
+        """Carrega os modelos instalados no ComboBox."""
+        self.model_combo.clear()
+        installed_models = self.ai_engine.list_installed_models()
+        if not installed_models:
+            self.model_combo.addItem("Nenhum modelo instalado")
+            self.model_combo.setEnabled(False)
             return
         
-        # Adicionar mensagem do usuário ao display
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.add_to_display(f"[{timestamp}] Você: {message}")
+        self.model_combo.setEnabled(True)
+        for model in installed_models:
+            self.model_combo.addItem(model.name, model.name)
+
+    def on_model_selected(self, model_id):
+        """Carrega o modelo selecionado se ainda não estiver carregado."""
+        if model_id and not self.ai_engine.loaded_models.get(model_id):
+            print(f"Modelo '{model_id}' selecionado. Carregando em segundo plano...")
+            # Idealmente, isso também seria em uma thread para não bloquear a UI
+            self.ai_engine.load_model(model_id)
+
+    def send_message(self):
+        """Envia a mensagem do usuário para o modelo de IA."""
+        message = self.message_input.text().strip()
+        if not message or (self.current_worker and self.current_worker.isRunning()):
+            return
+        
+        self.add_message(message, is_user=True)
         self.message_input.clear()
         
-        # Verificar se há modelo selecionado
-        model_name = self.model_combo.currentData()
-        if not model_name:
-            self.add_to_display("[ERRO] Nenhum modelo selecionado")
+        model_id = self.model_combo.currentData()
+        if not model_id:
+            self.add_message("Erro: Nenhum modelo válido selecionado.", is_user=False)
             return
         
-        # Desabilitar entrada durante processamento
-        self.message_input.setEnabled(False)
-        self.send_button.setEnabled(False)
-        self.send_button.setText("Processando...")
+        self.toggle_input_enabled(False)
         
-        # Processar mensagem
-        try:
-            self.add_to_display(f"[{timestamp}] Assistente: Processando...")
-            
-            # Usar o motor de IA
-            messages = [{"role": "user", "content": message}]
-            config = {
-                "temperature": self.temperature_spin.value(),
-                "max_tokens": self.max_tokens_spin.value()
-            }
-            
-            # Verificar se há modelos instalados
-            installed_models = self.ai_engine.list_models()
-            
-            if not installed_models:
-                # Resposta simulada se não há modelos
-                response = f"Olá! Esta é uma resposta simulada para '{message}'. Para usar modelos reais, vá para a aba 'Modelos' e baixe um modelo como DialoGPT-small."
-            else:
-                # Usar modelo real
-                result = self.ai_engine.chat(model_name, messages, config)
-                
-                if "error" in result:
-                    response = f"Erro: {result['error']} - Vá para aba 'Modelos' para baixar modelos."
-                else:
-                    response = result.get("message", {}).get("content", "Sem resposta")
-            
-            # Atualizar display
-            self.update_last_message(f"[{timestamp}] Assistente: {response}")
-            
-        except Exception as e:
-            self.update_last_message(f"[{timestamp}] Assistente: Erro - {str(e)}")
-        
-        finally:
-            # Reabilitar entrada
-            self.message_input.setEnabled(True)
-            self.send_button.setEnabled(True)
-            self.send_button.setText("Enviar")
-            self.message_input.setFocus()
-    
-    def add_to_display(self, text: str):
-        """Adicionar texto ao display"""
-        self.chat_display.append(text)
-        self.chat_display.append("")  # Linha em branco
-        
-        # Scroll para o final
-        cursor = self.chat_display.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        self.chat_display.setTextCursor(cursor)
-    
-    def update_last_message(self, text: str):
-        """Atualizar última mensagem"""
-        # Remover as duas últimas linhas (mensagem anterior + linha em branco)
-        cursor = self.chat_display.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.movePosition(QTextCursor.MoveOperation.Up, QTextCursor.MoveMode.KeepAnchor, 2)
-        cursor.removeSelectedText()
-        
-        # Adicionar nova mensagem
-        self.chat_display.append(text)
-        self.chat_display.append("")
-        
-        # Scroll para o final
-        cursor = self.chat_display.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        self.chat_display.setTextCursor(cursor)
-    
-    def new_conversation(self):
-        """Iniciar nova conversa"""
-        self.clear_chat()
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.add_to_display(f"[{timestamp}] Sistema: Nova conversa iniciada!")
-    
-    def clear_chat(self):
-        """Limpar chat"""
-        self.chat_display.clear()
-        self.conversation_history.clear()
+        # Prepara um balão de resposta vazio
+        self.current_response_widget = self.add_message("", is_user=False)
 
-# Alias para compatibilidade
-ChatWidget = SimpleChatWidget
+        config = {
+            "temperature": self.temperature_spin.value(),
+            "max_new_tokens": self.max_tokens_spin.value(),
+            "top_p": self.top_p_spin.value()
+        }
+        
+        self.current_worker = ChatWorker(message, model_id, config, self.ai_engine)
+        self.current_worker.response_chunk.connect(self.update_response)
+        self.current_worker.response_completed.connect(self.finalize_response)
+        self.current_worker.error_occurred.connect(self.handle_error)
+        self.current_worker.start()
+
+    def add_message(self, text: str, is_user: bool) -> Optional[ChatMessage]:
+        """Adiciona um widget de mensagem à área de chat."""
+        message_widget = ChatMessage(text, is_user)
+        self.messages_layout.insertWidget(self.messages_layout.count() - 1, message_widget)
+        QTimer.singleShot(10, lambda: self.messages_scroll.verticalScrollBar().setValue(self.messages_scroll.verticalScrollBar().maximum()))
+        
+        if not text and not is_user: # Se for uma mensagem de assistente vazia, retorna o widget
+            return message_widget
+        
+        self.conversation_history.append({"role": "user" if is_user else "assistant", "content": text})
+        return None
+
+    def update_response(self, chunk: str):
+        """Atualiza o balão de resposta do assistente com um novo pedaço de texto."""
+        if self.current_response_widget:
+            current_text = self.current_response_widget.text_edit.toPlainText()
+            self.current_response_widget.update_text(current_text + chunk)
+
+    def finalize_response(self):
+        """Finaliza a geração da resposta."""
+        if self.current_response_widget:
+            final_text = self.current_response_widget.text_edit.toPlainText()
+            self.conversation_history.append({"role": "assistant", "content": final_text})
+
+        self.current_worker = None
+        self.current_response_widget = None
+        self.toggle_input_enabled(True)
+
+    def handle_error(self, error_msg: str):
+        """Lida com erros ocorridos durante a geração."""
+        if self.current_response_widget:
+            self.current_response_widget.update_text(f"Erro: {error_msg}")
+        else:
+            self.add_message(f"Erro: {error_msg}", is_user=False)
+        self.finalize_response()
+
+    def toggle_input_enabled(self, enabled: bool):
+        """Habilita ou desabilita os campos de entrada e o botão."""
+        self.message_input.setEnabled(enabled)
+        self.send_button.setEnabled(enabled)
+        if not enabled:
+            self.send_button.setText("Parar")
+            self.send_button.clicked.disconnect()
+            self.send_button.clicked.connect(self.stop_generation)
+        else:
+            self.send_button.setText("Enviar")
+            self.send_button.clicked.disconnect()
+            self.send_button.clicked.connect(self.send_message)
+            self.message_input.setFocus()
+
+    def stop_generation(self):
+        """Para a geração de resposta atual."""
+        if self.current_worker:
+            self.current_worker.stop()
+
+    def new_conversation(self):
+        """Limpa o histórico e a UI para uma nova conversa."""
+        if self.current_worker and self.current_worker.isRunning():
+            self.current_worker.stop()
+
+        for i in reversed(range(self.messages_layout.count() - 1)):
+            widget = self.messages_layout.itemAt(i).widget()
+            if widget:
+                widget.deleteLater()
+        
+        self.conversation_history.clear()
+        self.add_message("Olá! Como posso te ajudar hoje?", is_user=False)

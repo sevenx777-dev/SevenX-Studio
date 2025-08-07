@@ -1,66 +1,70 @@
 @echo off
+setlocal
+
 echo ========================================
-echo   SevenX Studio - Atualizar Repositorio
+echo   SevenX Studio - Atualizador de Repositorio
 echo ========================================
 echo.
 
-echo Verificando status do Git...
+REM --- Verifica se o git esta instalado ---
+git --version >nul 2>&1
+if errorlevel 1 (
+    echo [ERRO] Git nao encontrado. Por favor, instale o Git e adicione ao PATH.
+    pause
+    exit /b 1
+)
+
+REM --- Mostra o status atual do repositorio ---
+echo --- Status Atual do Repositorio ---
 git status
+echo ---------------------------------
+echo.
+
+REM --- Pergunta ao usuario se deseja continuar ---
+choice /c SN /m "Deseja adicionar todos os arquivos e fazer um novo commit?"
+if errorlevel 2 (
+    echo Operacao cancelada pelo usuario.
+    pause
+    exit /b 0
+)
 
 echo.
-echo Adicionando arquivos modificados...
+echo Adicionando todos os arquivos ao stage...
 git add .
+echo Arquivos adicionados.
+echo.
+
+REM --- Pede ao usuario para inserir a mensagem do commit ---
+set /p commit_message="Digite a mensagem do commit (ex: 'feat: Adiciona nova funcionalidade'): "
+
+if not defined commit_message (
+    echo [AVISO] Mensagem de commit vazia. Usando mensagem padrao.
+    set commit_message="chore: Atualizacoes de rotina"
+)
 
 echo.
-echo Fazendo commit das atualizacoes...
-git commit -m "feat: SevenX Studio v1.0.0 - Release Candidate
-
-🎉 APLICAÇÃO COMPLETA E FUNCIONAL:
-
-✨ Funcionalidades Principais:
-- 🤖 Motor de IA próprio (SevenXEngine) independente
-- 💬 Chat interativo com modelos Hugging Face
-- 📊 Monitor de sistema em tempo real
-- 🎨 Interface moderna PyQt6 com tema escuro
-- 🔧 5 abas de configurações avançadas
-- 📦 Sistema de build automático para .exe
-
-🔥 Modelos Suportados:
-- ✅ DialoGPT Small/Medium (chat conversacional)
-- ✅ GPT-2 (geração de texto)
-- ❌ CodeBERT removido (não compatível com chat)
-
-🛠️ Correções de Bugs:
-- ✅ Carregamento robusto de modelos
-- ✅ Mapeamento correto de nomes
-- ✅ Tratamento de erros de token
-- ✅ Parâmetros otimizados para chat
-- ✅ Filtros para modelos incompatíveis
-
-📁 Estrutura Completa:
-- 📝 Documentação profissional (README, CONTRIBUTING, etc.)
-- 🧪 Testes automatizados
-- 🔄 CI/CD com GitHub Actions
-- 📦 Build automático de executável
-- 🎨 Templates para Issues/PRs
-
-🚀 PRONTO PARA PRODUÇÃO!"
-
+echo Fazendo commit com a mensagem: "%commit_message%"
+git commit -m "%commit_message%"
 echo.
-echo Enviando para GitHub...
+
+echo Enviando atualizacoes para o repositorio remoto (origin main)...
 git push origin main
 
+REM --- Fallback para configurar o repositorio remoto se o primeiro push falhar ---
 if errorlevel 1 (
     echo.
-    echo Configurando repositorio remoto...
+    echo [INFO] Falha no push. Pode ser a primeira vez ou o remote nao esta configurado.
+    echo Tentando configurar o repositorio remoto 'origin'...
     git remote add origin https://github.com/sevenx777-dev/SevenX-Studio.git
     git branch -M main
+    echo.
+    echo Tentando enviar novamente com a nova configuracao...
     git push -u origin main
 )
 
 echo.
 echo ========================================
-echo     Repositorio atualizado!
+echo      Repositorio atualizado!
 echo ========================================
 echo.
 echo Acesse: https://github.com/sevenx777-dev/SevenX-Studio

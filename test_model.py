@@ -10,7 +10,7 @@ from pathlib import Path
 # Adicionar src ao path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from src.core.ollama_client import SevenXEngine
+from src.core.sevenx_engine import SevenXEngine
 from src.core.config import Config
 
 def test_models():

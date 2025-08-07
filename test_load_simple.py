@@ -19,7 +19,7 @@ def test_simple_load():
     try:
         # Importar módulos
         print("📦 Importando módulos...")
-        from src.core.ollama_client import SevenXEngine
+        from src.core.sevenx_engine import SevenXEngine
         from src.core.config import Config
         print("✅ Módulos importados")
         
