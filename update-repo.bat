@@ -49,7 +49,7 @@ echo.
 
 REM --- **CORRECAO AQUI**: Puxa as alteracoes do repositorio remoto primeiro ---
 echo Puxando as ultimas alteracoes do GitHub (git pull)...
-git pull origin main
+git pull origin main --no-edit
 echo.
 
 echo Enviando atualizacoes para o repositorio remoto (origin main)...
