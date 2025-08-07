@@ -7,14 +7,13 @@ import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-# Importa a classe principal do nosso motor de IA usando um import relativo
+# Importa a classe principal do nosso motor de IA
 from .sevenx_engine import SevenXEngine
 
 class Config:
     """Classe para gerenciar as configurações da aplicação."""
     
     def __init__(self):
-        """Inicializa e carrega as configurações."""
         self.config_dir = Path.home() / ".sevenx_studio"
         self.config_file = self.config_dir / "config.json"
         self.default_models_path = self.config_dir / "models"
@@ -35,9 +34,9 @@ class Config:
             "theme": "dark",
             "language": "pt-BR",
             "models_directory": str(self.default_models_path),
+            "hf_token": "", # Campo para o token de acesso do Hugging Face
             "ollama_host": "http://localhost:11434",
             "api_port": 8080,
-            "max_conversations": 100,
             "auto_save": True,
             "chat_settings": {
                 "temperature": 0.7,
@@ -104,11 +103,9 @@ class Config:
 
 class HuggingFaceClient:
     """Cliente de compatibilidade que utiliza o SevenXEngine."""
-    
     def __init__(self, engine: SevenXEngine):
         self.engine = engine
     
-    # Os métodos aqui delegam as chamadas para a instância do engine
     def get_popular_models(self, query: str = "") -> List[Dict]:
         return self.engine.search_online_models(query=query)
     
@@ -132,4 +129,3 @@ class HuggingFaceClient:
         if not loaded_model_id:
             return "Nenhum modelo carregado."
         return self.engine.generate_response(loaded_model_id, prompt, options=kwargs)
-

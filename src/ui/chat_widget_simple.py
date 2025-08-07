@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QTextCursor
 
+# Importa as classes necessárias dos outros módulos do projeto
 from ..core.sevenx_engine import SevenXEngine
 from ..core.config import Config
 
@@ -83,18 +84,17 @@ class ChatWorker(QThread):
         self.should_stop = False
     
     def run(self):
+        """Executa a geração da resposta em streaming."""
         try:
-            full_response = self.ai_engine.generate_response(self.model_id, self.messages, self.config)
+            stream_generator = self.ai_engine.generate_stream(self.model_id, self.messages, self.config)
             
-            if "Erro:" in full_response:
-                self.error_occurred.emit(full_response)
-                return
-
-            words = full_response.split()
-            for word in words:
-                if self.should_stop: break
-                self.response_chunk.emit(word + " ")
-                self.msleep(50)
+            for chunk in stream_generator:
+                if self.should_stop:
+                    break
+                if "Erro:" in chunk:
+                    self.error_occurred.emit(chunk)
+                    return
+                self.response_chunk.emit(chunk)
             
         except Exception as e:
             self.error_occurred.emit(f"Erro inesperado no worker: {e}")
@@ -210,7 +210,7 @@ class ChatWidget(QWidget):
             self.model_combo.addItem(model.name, model.name)
 
     def on_model_selected(self, model_id):
-        if model_id and not self.ai_engine.loaded_models.get(model_id):
+        if model_id and "Nenhum" not in model_id and not self.ai_engine.loaded_models.get(model_id):
             print(f"Modelo '{model_id}' selecionado. Carregando em segundo plano...")
             self.ai_engine.load_model(model_id)
 
@@ -260,9 +260,14 @@ class ChatWidget(QWidget):
             self.current_response_widget.update_text(current_text + chunk)
 
     def finalize_response(self):
+        """Finaliza a geração da resposta, garantindo que o widget de resposta exista."""
+        # **CORREÇÃO APLICADA AQUI**
+        # Verifica se o widget de resposta ainda existe antes de tentar acessá-lo.
         if self.current_response_widget:
             final_text = self.current_response_widget.text_edit.toPlainText()
-            self.add_message_to_history(final_text, is_user=False)
+            # Só adiciona ao histórico se a resposta não estiver vazia
+            if final_text.strip():
+                self.add_message_to_history(final_text, is_user=False)
 
         self.current_worker = None
         self.current_response_widget = None

@@ -1,275 +1,185 @@
 """
-Widget para monitoramento do sistema
+Widget para monitoramento do sistema, com suporte a GPU NVIDIA.
 """
-
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                            QProgressBar, QGroupBox, QTextEdit, QFrame)
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
 
 import psutil
 import platform
+import os
 from datetime import datetime
 from typing import Dict, List
 
-class SystemInfoCard(QFrame):
-    """Card para exibir informação do sistema"""
-    
-    def __init__(self, title: str, value: str, unit: str = ""):
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+                             QProgressBar, QGroupBox, QTextEdit, QFrame)
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont
+
+# Importa as classes do projeto
+from ..core.config import Config
+from ..core.sevenx_engine import SevenXEngine
+
+# Tenta importar a biblioteca da NVIDIA; se não existir, a funcionalidade da GPU é desativada
+try:
+    import pynvml
+    PYNVML_AVAILABLE = True
+except ImportError:
+    PYNVML_AVAILABLE = False
+
+class ResourceBar(QFrame):
+    """Widget customizado para exibir uma barra de progresso de recurso."""
+    def __init__(self, title: str):
         super().__init__()
-        self.setup_ui(title, value, unit)
-    
-    def setup_ui(self, title: str, value: str, unit: str):
-        """Configurar interface do card"""
+        self.title_label = QLabel(title)
+        self.progress_bar = QProgressBar()
+        self.value_label = QLabel("0.0 %")
+        self.setup_ui()
+        
+    def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setContentsMargins(10, 5, 10, 5)
+        layout.setSpacing(3)
         
-        # Título
-        title_label = QLabel(title)
-        title_label.setStyleSheet("font-weight: bold; color: #cccccc; font-size: 10px;")
-        layout.addWidget(title_label)
+        top_layout = QHBoxLayout()
+        top_layout.addWidget(self.title_label)
+        top_layout.addStretch()
+        top_layout.addWidget(self.value_label)
         
-        # Valor
-        value_layout = QHBoxLayout()
-        self.value_label = QLabel(value)
-        self.value_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white;")
-        value_layout.addWidget(self.value_label)
+        layout.addLayout(top_layout)
+        layout.addWidget(self.progress_bar)
         
-        if unit:
-            unit_label = QLabel(unit)
-            unit_label.setStyleSheet("font-size: 12px; color: #aaaaaa;")
-            value_layout.addWidget(unit_label)
+        self.setStyleSheet("QLabel { font-size: 11px; }")
+
+    def set_value(self, value: float):
+        self.progress_bar.setValue(int(value))
+        self.value_label.setText(f"{value:.1f} %")
         
-        value_layout.addStretch()
-        layout.addLayout(value_layout)
-        
-        # Estilo do card
-        self.setStyleSheet("""
-            QFrame {
-                background-color: #404040;
-                border: 1px solid #555555;
-                border-radius: 6px;
-            }
-        """)
-        self.setFixedHeight(60)
-    
-    def update_value(self, value: str):
-        """Atualizar valor do card"""
-        self.value_label.setText(value)
+        # Muda a cor da barra com base no uso
+        if value > 85:
+            stylesheet = "QProgressBar::chunk { background-color: #d32f2f; }" # Vermelho
+        elif value > 60:
+            stylesheet = "QProgressBar::chunk { background-color: #f57c00; }" # Laranja
+        else:
+            stylesheet = "QProgressBar::chunk { background-color: #0078d4; }" # Azul
+        self.progress_bar.setStyleSheet(stylesheet)
 
 class SystemMonitor(QWidget):
-    """Widget para monitoramento do sistema"""
+    """Widget para monitoramento de CPU, RAM, Disco e GPU."""
     
-    def __init__(self, config):
+    def __init__(self, config: Config, ai_engine: SevenXEngine):
         super().__init__()
         self.config = config
+        self.ai_engine = ai_engine
+        self.nvml_handle = None
+        self.current_process = psutil.Process(os.getpid())
+        
+        if PYNVML_AVAILABLE:
+            self._init_nvml()
         
         self.setup_ui()
         
-        # Timer para atualizar informações
-        self.update_timer = QTimer()
+        self.update_timer = QTimer(self)
         self.update_timer.timeout.connect(self.update_info)
-        self.update_timer.start(2000)  # Atualizar a cada 2 segundos
-        
-        # Primeira atualização
+        self.update_timer.start(2000) # Atualiza a cada 2 segundos
         self.update_info()
+
+    def _init_nvml(self):
+        """Inicializa a biblioteca pynvml para monitoramento da GPU."""
+        try:
+            pynvml.nvmlInit()
+            # Pega o handle da primeira GPU
+            self.nvml_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            print("Monitoramento de GPU NVIDIA ativado.")
+        except Exception as e:
+            print(f"Não foi possível inicializar o monitoramento de GPU: {e}")
+            self.nvml_handle = None
     
     def setup_ui(self):
-        """Configurar interface do usuário"""
+        """Configura a interface gráfica do widget."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(10)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(15)
         
-        # Título
         title_label = QLabel("Monitor do Sistema")
-        title_label.setStyleSheet("font-size: 14px; font-weight: bold; color: white; margin-bottom: 10px;")
+        title_label.setStyleSheet("font-size: 14px; font-weight: bold; margin-bottom: 5px;")
         layout.addWidget(title_label)
         
-        # Cards de informações básicas
-        self.cpu_card = SystemInfoCard("CPU", "0", "%")
-        self.memory_card = SystemInfoCard("Memória", "0", "%")
-        self.disk_card = SystemInfoCard("Disco", "0", "%")
+        # Barras de Recursos
+        self.cpu_bar = ResourceBar("CPU")
+        self.memory_bar = ResourceBar("Memória (RAM)")
+        self.disk_bar = ResourceBar("Disco (Principal)")
+        layout.addWidget(self.cpu_bar)
+        layout.addWidget(self.memory_bar)
+        layout.addWidget(self.disk_bar)
+
+        # Grupo da GPU (só aparece se houver uma GPU NVIDIA)
+        if self.nvml_handle:
+            gpu_group = QGroupBox("GPU NVIDIA")
+            gpu_layout = QVBoxLayout(gpu_group)
+            self.gpu_util_bar = ResourceBar("Uso da GPU")
+            self.gpu_mem_bar = ResourceBar("Memória da GPU (VRAM)")
+            self.gpu_temp_label = QLabel("Temperatura: -- °C")
+            gpu_layout.addWidget(self.gpu_util_bar)
+            gpu_layout.addWidget(self.gpu_mem_bar)
+            gpu_layout.addWidget(self.gpu_temp_label)
+            layout.addWidget(gpu_group)
         
-        layout.addWidget(self.cpu_card)
-        layout.addWidget(self.memory_card)
-        layout.addWidget(self.disk_card)
-        
-        # Informações detalhadas do sistema
-        system_group = QGroupBox("Informações do Sistema")
-        system_layout = QVBoxLayout(system_group)
-        
-        self.system_info = QTextEdit()
-        self.system_info.setReadOnly(True)
-        self.system_info.setMaximumHeight(150)
-        self.system_info.setStyleSheet("""
-            QTextEdit {
-                background-color: #2b2b2b;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                color: #cccccc;
-                font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 10px;
-            }
-        """)
-        
-        system_layout.addWidget(self.system_info)
-        layout.addWidget(system_group)
-        
-        # Processos ativos
-        processes_group = QGroupBox("Processos de IA")
-        processes_layout = QVBoxLayout(processes_group)
-        
-        self.processes_info = QTextEdit()
-        self.processes_info.setReadOnly(True)
-        self.processes_info.setMaximumHeight(120)
-        self.processes_info.setStyleSheet("""
-            QTextEdit {
-                background-color: #2b2b2b;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                color: #cccccc;
-                font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 10px;
-            }
-        """)
-        
-        processes_layout.addWidget(self.processes_info)
-        layout.addWidget(processes_group)
-        
-        # Status dos modelos
-        models_group = QGroupBox("Status dos Modelos")
-        models_layout = QVBoxLayout(models_group)
-        
-        self.models_status = QLabel("🔴 Nenhum modelo carregado")
-        self.models_status.setStyleSheet("font-size: 12px; padding: 5px;")
-        models_layout.addWidget(self.models_status)
-        
-        layout.addWidget(models_group)
-        
+        # Grupo de Status do App
+        app_status_group = QGroupBox("Status da Aplicação")
+        app_status_layout = QVBoxLayout(app_status_group)
+        self.app_process_label = QLabel("Uso do App: --")
+        self.model_status_label = QLabel("Modelo Carregado: Nenhum")
+        app_status_layout.addWidget(self.app_process_label)
+        app_status_layout.addWidget(self.model_status_label)
+        layout.addWidget(app_status_group)
+
         layout.addStretch()
-    
+
     def update_info(self):
-        """Atualizar informações do sistema"""
+        """Atualiza todas as informações de monitoramento."""
         try:
-            # CPU
-            cpu_percent = psutil.cpu_percent(interval=None)
-            self.cpu_card.update_value(f"{cpu_percent:.1f}")
-            
-            # Memória
-            memory = psutil.virtual_memory()
-            memory_percent = memory.percent
-            self.memory_card.update_value(f"{memory_percent:.1f}")
-            
-            # Disco
-            disk = psutil.disk_usage('/')
-            disk_percent = disk.percent
-            self.disk_card.update_value(f"{disk_percent:.1f}")
-            
-            # Informações detalhadas do sistema
-            self.update_system_info()
-            
-            # Processos de IA
-            self.update_ai_processes()
-            
-            # Status dos modelos
-            self.update_models_status()
-            
-        except Exception as e:
-            print(f"Erro ao atualizar informações do sistema: {e}")
-    
-    def update_system_info(self):
-        """Atualizar informações detalhadas do sistema"""
-        try:
-            # Informações básicas
-            system_info = []
-            system_info.append(f"Sistema: {platform.system()} {platform.release()}")
-            system_info.append(f"Arquitetura: {platform.machine()}")
-            system_info.append(f"Processador: {platform.processor()}")
-            
-            # CPU
-            cpu_count = psutil.cpu_count()
-            cpu_freq = psutil.cpu_freq()
-            system_info.append(f"CPU Cores: {cpu_count}")
-            if cpu_freq:
-                system_info.append(f"CPU Freq: {cpu_freq.current:.0f} MHz")
-            
-            # Memória
-            memory = psutil.virtual_memory()
-            system_info.append(f"RAM Total: {self.format_bytes(memory.total)}")
-            system_info.append(f"RAM Disponível: {self.format_bytes(memory.available)}")
-            
-            # Uptime
-            boot_time = datetime.fromtimestamp(psutil.boot_time())
-            uptime = datetime.now() - boot_time
-            system_info.append(f"Uptime: {str(uptime).split('.')[0]}")
-            
-            self.system_info.setPlainText("\\n".join(system_info))
-            
-        except Exception as e:
-            self.system_info.setPlainText(f"Erro ao obter informações: {e}")
-    
-    def update_ai_processes(self):
-        """Atualizar informações sobre processos de IA"""
-        try:
-            ai_processes = []
-            
-            # Procurar por processos relacionados a IA
-            ai_keywords = ['ollama', 'python', 'pytorch', 'tensorflow', 'cuda']
-            
-            for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
-                try:
-                    proc_name = proc.info['name'].lower()
-                    if any(keyword in proc_name for keyword in ai_keywords):
-                        cpu = proc.info['cpu_percent'] or 0
-                        memory = proc.info['memory_percent'] or 0
-                        
-                        if cpu > 0.1 or memory > 0.1:  # Apenas processos com uso significativo
-                            ai_processes.append(
-                                f"{proc.info['name']} (PID: {proc.info['pid']}) - "
-                                f"CPU: {cpu:.1f}% RAM: {memory:.1f}%"
-                            )
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
-            
-            if ai_processes:
-                self.processes_info.setPlainText("\\n".join(ai_processes[:10]))  # Máximo 10 processos
-            else:
-                self.processes_info.setPlainText("Nenhum processo de IA detectado")
+            # CPU, RAM e Disco
+            self.cpu_bar.set_value(psutil.cpu_percent(interval=None))
+            self.memory_bar.set_value(psutil.virtual_memory().percent)
+            self.disk_bar.set_value(psutil.disk_usage('/').percent)
+
+            # GPU (se disponível)
+            if self.nvml_handle:
+                gpu_util = pynvml.nvmlDeviceGetUtilizationRates(self.nvml_handle)
+                self.gpu_util_bar.set_value(gpu_util.gpu)
                 
-        except Exception as e:
-            self.processes_info.setPlainText(f"Erro ao obter processos: {e}")
-    
-    def update_connection_status(self):
-        """Atualizar status da conexão com Ollama"""
-        try:
-            # Simular verificação de conexão (implementar verificação real)
-            import random
-            connected = random.choice([True, False])  # Simulação
-            
-            if connected:
-                self.connection_status.setText("🟢 Conectado ao Ollama")
-                self.connection_status.setStyleSheet("color: #00ff00; font-size: 12px; padding: 5px;")
-            else:
-                self.connection_status.setText("🔴 Desconectado")
-                self.connection_status.setStyleSheet("color: #ff4444; font-size: 12px; padding: 5px;")
+                gpu_mem = pynvml.nvmlDeviceGetMemoryInfo(self.nvml_handle)
+                self.gpu_mem_bar.set_value((gpu_mem.used / gpu_mem.total) * 100)
                 
+                gpu_temp = pynvml.nvmlDeviceGetTemperature(self.nvml_handle, pynvml.NVML_TEMPERATURE_GPU)
+                self.gpu_temp_label.setText(f"Temperatura: {gpu_temp} °C")
+
+            # Status da Aplicação
+            app_cpu = self.current_process.cpu_percent() / psutil.cpu_count()
+            app_mem = self.current_process.memory_info().rss
+            self.app_process_label.setText(f"Uso do App: {app_cpu:.1f}% CPU, {self.format_bytes(app_mem)} RAM")
+
+            loaded_models = list(self.ai_engine.loaded_models.keys())
+            if loaded_models:
+                self.model_status_label.setText(f"Modelo Carregado: {loaded_models[0]}")
+            else:
+                self.model_status_label.setText("Modelo Carregado: Nenhum")
+
         except Exception as e:
-            self.connection_status.setText("❓ Status desconhecido")
-            self.connection_status.setStyleSheet("color: #ffaa00; font-size: 12px; padding: 5px;")
-    
+            # Desativa o timer em caso de erro para não sobrecarregar
+            self.update_timer.stop()
+            print(f"Erro no monitor do sistema, desativando: {e}")
+
     def format_bytes(self, bytes_value: int) -> str:
-        """Formatar bytes em unidades legíveis"""
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if bytes_value < 1024.0:
-                return f"{bytes_value:.1f} {unit}"
-            bytes_value /= 1024.0
-        return f"{bytes_value:.1f} PB"
-    
-    def update_models_status(self):
-        """Atualizar status dos modelos (método de compatibilidade)"""
-        try:
-            # Este método é chamado pelo main_window mas não é necessário
-            # Apenas para evitar erros
-            pass
-        except Exception as e:
-            print(f"Erro ao atualizar status dos modelos: {e}")
+        """Formata bytes em unidades legíveis (KB, MB, GB)."""
+        if bytes_value < 1024: return f"{bytes_value} B"
+        kb = bytes_value / 1024
+        if kb < 1024: return f"{kb:.1f} KB"
+        mb = kb / 1024
+        if mb < 1024: return f"{mb:.1f} MB"
+        gb = mb / 1024
+        return f"{gb:.1f} GB"
+        
+    def closeEvent(self, event):
+        """Garante que os recursos sejam liberados ao fechar."""
+        if PYNVML_AVAILABLE and self.nvml_handle:
+            pynvml.nvmlShutdown()
+        super().closeEvent(event)

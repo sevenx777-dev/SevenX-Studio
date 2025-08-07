@@ -1,425 +1,185 @@
 """
-Widget de configurações da aplicação
+Widget de configurações da aplicação, com lógica refatorada e UX aprimorada.
 """
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                            QLineEdit, QPushButton, QComboBox, QSpinBox,
-                            QDoubleSpinBox, QCheckBox, QGroupBox, QTabWidget,
-                            QFileDialog, QTextEdit, QSlider, QFormLayout,
-                            QMessageBox, QScrollArea)
+                             QLineEdit, QPushButton, QComboBox, QSpinBox,
+                             QDoubleSpinBox, QCheckBox, QGroupBox, QTabWidget,
+                             QFileDialog, QFormLayout, QMessageBox, QScrollArea)
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
 
-import os
-from pathlib import Path
+from ..core.config import Config
 
 class SettingsWidget(QWidget):
-    """Widget de configurações da aplicação"""
+    """Widget aprimorado para gerenciamento de todas as configurações da aplicação."""
     
     settings_changed = pyqtSignal()
     
-    def __init__(self, config):
+    def __init__(self, config: Config):
         super().__init__()
         self.config = config
+        self.widget_map = {}
         
         self.setup_ui()
+        self.map_widgets_to_config()
         self.load_settings()
     
     def setup_ui(self):
-        """Configurar interface do usuário"""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        
-        # Scroll area para as configurações
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
-        # Widget principal das configurações
-        settings_widget = QWidget()
-        settings_layout = QVBoxLayout(settings_widget)
-        
-        # Abas de configurações
-        tab_widget = QTabWidget()
-        
-        # Aba Geral
-        general_tab = self.create_general_tab()
-        tab_widget.addTab(general_tab, "Geral")
-        
-        # Aba Modelos
-        models_tab = self.create_models_tab()
-        tab_widget.addTab(models_tab, "Modelos")
-        
-        # Aba Chat
-        chat_tab = self.create_chat_tab()
-        tab_widget.addTab(chat_tab, "Chat")
-        
-        # Aba Interface
-        interface_tab = self.create_interface_tab()
-        tab_widget.addTab(interface_tab, "Interface")
-        
-        # Aba Avançado
-        advanced_tab = self.create_advanced_tab()
-        tab_widget.addTab(advanced_tab, "Avançado")
-        
-        settings_layout.addWidget(tab_widget)
-        
-        # Botões de ação
-        buttons_layout = QHBoxLayout()
-        
-        self.save_btn = QPushButton("Salvar Configurações")
-        self.save_btn.clicked.connect(self.save_settings)
-        
-        self.reset_btn = QPushButton("Restaurar Padrões")
-        self.reset_btn.clicked.connect(self.reset_settings)
-        
-        self.apply_btn = QPushButton("Aplicar")
-        self.apply_btn.clicked.connect(self.apply_settings)
-        
-        buttons_layout.addStretch()
-        buttons_layout.addWidget(self.reset_btn)
-        buttons_layout.addWidget(self.apply_btn)
-        buttons_layout.addWidget(self.save_btn)
-        
-        settings_layout.addLayout(buttons_layout)
-        
-        scroll.setWidget(settings_widget)
-        layout.addWidget(scroll)
-    
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); layout.addWidget(scroll)
+        container = QWidget(); layout_container = QVBoxLayout(container); scroll.setWidget(container)
+        tabs = QTabWidget()
+        tabs.addTab(self.create_general_tab(), " GERAL")
+        tabs.addTab(self.create_chat_tab(), "💬 CHAT")
+        tabs.addTab(self.create_interface_tab(), "🎨 INTERFACE")
+        tabs.addTab(self.create_advanced_tab(), "⚙️ AVANÇADO")
+        layout_container.addWidget(tabs)
+        buttons = QHBoxLayout(); buttons.addStretch()
+        self.reset_btn = QPushButton("Restaurar Padrões"); self.reset_btn.clicked.connect(self.reset_settings); buttons.addWidget(self.reset_btn)
+        self.save_btn = QPushButton("Salvar e Aplicar"); self.save_btn.clicked.connect(self.save_settings); self.save_btn.setStyleSheet("background-color: #0078d4;"); buttons.addWidget(self.save_btn)
+        layout_container.addLayout(buttons)
+
     def create_general_tab(self) -> QWidget:
-        """Criar aba de configurações gerais"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        # Configurações de idioma e tema
-        appearance_group = QGroupBox("Aparência")
-        appearance_layout = QFormLayout(appearance_group)
-        
-        # Tema
+        widget = QWidget(); layout = QFormLayout(widget)
+        layout.setSpacing(15)
+
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["dark", "light"])
-        appearance_layout.addRow("Tema:", self.theme_combo)
-        
-        # Idioma
-        self.language_combo = QComboBox()
-        self.language_combo.addItems(["pt-BR", "en-US", "es-ES"])
-        appearance_layout.addRow("Idioma:", self.language_combo)
-        
-        layout.addWidget(appearance_group)
-        
-        # Configurações de diretórios
-        directories_group = QGroupBox("Diretórios")
-        directories_layout = QFormLayout(directories_group)
-        
-        # Diretório de modelos
-        models_dir_layout = QHBoxLayout()
+        self.theme_combo.setToolTip("Define o tema visual da aplicação (requer reinicialização).")
+        layout.addRow("Tema Visual:", self.theme_combo)
+
         self.models_dir_input = QLineEdit()
-        models_dir_btn = QPushButton("Procurar")
+        self.models_dir_input.setToolTip("Pasta onde os modelos de IA serão armazenados.")
+        models_dir_btn = QPushButton("Procurar...")
         models_dir_btn.clicked.connect(self.select_models_directory)
-        models_dir_layout.addWidget(self.models_dir_input)
-        models_dir_layout.addWidget(models_dir_btn)
-        directories_layout.addRow("Modelos:", models_dir_layout)
+        dir_layout = QHBoxLayout()
+        dir_layout.addWidget(self.models_dir_input)
+        dir_layout.addWidget(models_dir_btn)
+        layout.addRow("Diretório de Modelos:", dir_layout)
         
-        layout.addWidget(directories_group)
-        
-        # Configurações de conexão
-        connection_group = QGroupBox("Conexão")
-        connection_layout = QFormLayout(connection_group)
-        
-        # Host do Ollama
-        self.ollama_host_input = QLineEdit()
-        connection_layout.addRow("Host Ollama:", self.ollama_host_input)
-        
-        # Porta da API
-        self.api_port_spin = QSpinBox()
-        self.api_port_spin.setRange(1000, 65535)
-        connection_layout.addRow("Porta API:", self.api_port_spin)
-        
-        layout.addWidget(connection_group)
-        
-        layout.addStretch()
         return widget
-    
-    def create_models_tab(self) -> QWidget:
-        """Criar aba de configurações de modelos"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        # Configurações de download
-        download_group = QGroupBox("Download de Modelos")
-        download_layout = QFormLayout(download_group)
-        
-        # Threads simultâneas
-        self.download_threads_spin = QSpinBox()
-        self.download_threads_spin.setRange(1, 8)
-        download_layout.addRow("Threads simultâneas:", self.download_threads_spin)
-        
-        # Auto-verificar atualizações
-        self.auto_check_updates = QCheckBox("Verificar atualizações automaticamente")
-        download_layout.addRow(self.auto_check_updates)
-        
-        layout.addWidget(download_group)
-        
-        # Configurações de cache
-        cache_group = QGroupBox("Cache")
-        cache_layout = QFormLayout(cache_group)
-        
-        # Tamanho máximo do cache
-        self.cache_size_spin = QSpinBox()
-        self.cache_size_spin.setRange(1, 100)
-        self.cache_size_spin.setSuffix(" GB")
-        cache_layout.addRow("Tamanho máximo:", self.cache_size_spin)
-        
-        # Limpar cache automaticamente
-        self.auto_clear_cache = QCheckBox("Limpar cache automaticamente")
-        cache_layout.addRow(self.auto_clear_cache)
-        
-        layout.addWidget(cache_group)
-        
-        layout.addStretch()
-        return widget
-    
+
     def create_chat_tab(self) -> QWidget:
-        """Criar aba de configurações de chat"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        # Parâmetros padrão do modelo
-        model_params_group = QGroupBox("Parâmetros Padrão do Modelo")
-        model_params_layout = QFormLayout(model_params_group)
-        
-        # Temperature
+        widget = QWidget(); layout = QFormLayout(widget)
+        layout.setSpacing(15)
+
         self.temperature_spin = QDoubleSpinBox()
-        self.temperature_spin.setRange(0.0, 2.0)
-        self.temperature_spin.setSingleStep(0.1)
-        self.temperature_spin.setDecimals(2)
-        model_params_layout.addRow("Temperature:", self.temperature_spin)
+        self.temperature_spin.setRange(0.0, 2.0); self.temperature_spin.setSingleStep(0.1)
+        self.temperature_spin.setToolTip("Controla a criatividade da resposta. Valores mais altos = mais criativo.")
+        layout.addRow("Temperatura:", self.temperature_spin)
         
-        # Max Tokens
         self.max_tokens_spin = QSpinBox()
-        self.max_tokens_spin.setRange(1, 8192)
-        model_params_layout.addRow("Max Tokens:", self.max_tokens_spin)
-        
-        # Top P
+        self.max_tokens_spin.setRange(1, 8192); self.max_tokens_spin.setSingleStep(128)
+        self.max_tokens_spin.setToolTip("Número máximo de tokens (palavras/partes de palavras) na resposta.")
+        layout.addRow("Máximo de Tokens:", self.max_tokens_spin)
+
         self.top_p_spin = QDoubleSpinBox()
-        self.top_p_spin.setRange(0.0, 1.0)
-        self.top_p_spin.setSingleStep(0.1)
-        self.top_p_spin.setDecimals(2)
-        model_params_layout.addRow("Top P:", self.top_p_spin)
-        
-        # Top K
+        self.top_p_spin.setRange(0.0, 1.0); self.top_p_spin.setSingleStep(0.05)
+        self.top_p_spin.setToolTip("Amostragem de núcleo. Considera apenas os tokens mais prováveis com uma probabilidade cumulativa de 'top_p'.")
+        layout.addRow("Top P:", self.top_p_spin)
+
         self.top_k_spin = QSpinBox()
-        self.top_k_spin.setRange(1, 100)
-        model_params_layout.addRow("Top K:", self.top_k_spin)
-        
-        # Repeat Penalty
+        self.top_k_spin.setRange(0, 100)
+        self.top_k_spin.setToolTip("Considera apenas os 'k' tokens mais prováveis para a resposta. 0 para desativar.")
+        layout.addRow("Top K:", self.top_k_spin)
+
         self.repeat_penalty_spin = QDoubleSpinBox()
-        self.repeat_penalty_spin.setRange(0.0, 2.0)
-        self.repeat_penalty_spin.setSingleStep(0.1)
-        self.repeat_penalty_spin.setDecimals(2)
-        model_params_layout.addRow("Repeat Penalty:", self.repeat_penalty_spin)
-        
-        layout.addWidget(model_params_group)
-        
-        # Configurações de conversa
-        conversation_group = QGroupBox("Conversas")
-        conversation_layout = QFormLayout(conversation_group)
-        
-        # Máximo de conversas
-        self.max_conversations_spin = QSpinBox()
-        self.max_conversations_spin.setRange(10, 1000)
-        conversation_layout.addRow("Máximo de conversas:", self.max_conversations_spin)
-        
-        # Auto-salvar
-        self.auto_save_check = QCheckBox("Salvar conversas automaticamente")
-        conversation_layout.addRow(self.auto_save_check)
-        
-        layout.addWidget(conversation_group)
-        
-        layout.addStretch()
+        self.repeat_penalty_spin.setRange(1.0, 2.0); self.repeat_penalty_spin.setSingleStep(0.1)
+        self.repeat_penalty_spin.setToolTip("Penaliza tokens que já apareceram, reduzindo a repetição. 1.0 = sem penalidade.")
+        layout.addRow("Penalidade de Repetição:", self.repeat_penalty_spin)
+
+        self.auto_save_check = QCheckBox("Salvar conversas automaticamente ao fechar")
+        layout.addRow(self.auto_save_check)
+
         return widget
-    
+
     def create_interface_tab(self) -> QWidget:
-        """Criar aba de configurações de interface"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        # Configurações da janela
-        window_group = QGroupBox("Janela")
-        window_layout = QFormLayout(window_group)
-        
-        # Tamanho da fonte
+        widget = QWidget(); layout = QFormLayout(widget)
+        layout.setSpacing(15)
+
         self.font_size_spin = QSpinBox()
-        self.font_size_spin.setRange(8, 24)
-        window_layout.addRow("Tamanho da fonte:", self.font_size_spin)
-        
-        # Largura da sidebar
+        self.font_size_spin.setRange(8, 20)
+        self.font_size_spin.setToolTip("Tamanho da fonte principal da aplicação (requer reinicialização).")
+        layout.addRow("Tamanho da Fonte:", self.font_size_spin)
+
         self.sidebar_width_spin = QSpinBox()
-        self.sidebar_width_spin.setRange(200, 400)
-        window_layout.addRow("Largura da sidebar:", self.sidebar_width_spin)
+        self.sidebar_width_spin.setRange(200, 500)
+        self.sidebar_width_spin.setToolTip("Largura do painel lateral do monitor de sistema.")
+        layout.addRow("Largura do Painel Lateral:", self.sidebar_width_spin)
+
+        self.show_system_info_check = QCheckBox("Exibir painel de monitoramento do sistema")
+        layout.addRow(self.show_system_info_check)
         
-        # Mostrar informações do sistema
-        self.show_system_info_check = QCheckBox("Mostrar informações do sistema")
-        window_layout.addRow(self.show_system_info_check)
-        
-        layout.addWidget(window_group)
-        
-        # Configurações do chat
-        chat_ui_group = QGroupBox("Interface do Chat")
-        chat_ui_layout = QFormLayout(chat_ui_group)
-        
-        # Mostrar timestamps
-        self.show_timestamps_check = QCheckBox("Mostrar timestamps nas mensagens")
-        chat_ui_layout.addRow(self.show_timestamps_check)
-        
-        # Syntax highlighting
-        self.syntax_highlighting_check = QCheckBox("Destacar sintaxe de código")
-        chat_ui_layout.addRow(self.syntax_highlighting_check)
-        
-        layout.addWidget(chat_ui_group)
-        
-        layout.addStretch()
         return widget
-    
+
     def create_advanced_tab(self) -> QWidget:
-        """Criar aba de configurações avançadas"""
         widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        # Configurações de logging
-        logging_group = QGroupBox("Logging")
-        logging_layout = QFormLayout(logging_group)
-        
-        # Nível de log
-        self.log_level_combo = QComboBox()
-        self.log_level_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
-        logging_layout.addRow("Nível de log:", self.log_level_combo)
-        
-        # Tamanho máximo do arquivo de log
-        self.log_file_size_spin = QSpinBox()
-        self.log_file_size_spin.setRange(1, 100)
-        self.log_file_size_spin.setSuffix(" MB")
-        logging_layout.addRow("Tamanho máximo do log:", self.log_file_size_spin)
-        
-        layout.addWidget(logging_group)
-        
-        # Configurações de performance
-        performance_group = QGroupBox("Performance")
-        performance_layout = QFormLayout(performance_group)
-        
-        # Usar GPU se disponível
-        self.use_gpu_check = QCheckBox("Usar GPU se disponível")
-        performance_layout.addRow(self.use_gpu_check)
-        
-        # Threads de processamento
-        self.processing_threads_spin = QSpinBox()
-        self.processing_threads_spin.setRange(1, 16)
-        performance_layout.addRow("Threads de processamento:", self.processing_threads_spin)
-        
-        layout.addWidget(performance_group)
-        
-        # Configurações experimentais
-        experimental_group = QGroupBox("Experimental")
-        experimental_layout = QFormLayout(experimental_group)
-        
-        # Recursos experimentais
-        self.experimental_features_check = QCheckBox("Habilitar recursos experimentais")
-        experimental_layout.addRow(self.experimental_features_check)
-        
-        layout.addWidget(experimental_group)
-        
-        layout.addStretch()
+        layout = QFormLayout(widget)
+        layout.setSpacing(15)
+
+        self.hf_token_input = QLineEdit()
+        self.hf_token_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.hf_token_input.setToolTip("Cole aqui o seu token de acesso do Hugging Face para baixar modelos protegidos.")
+        layout.addRow("Token Hugging Face:", self.hf_token_input)
+
+        self.ollama_host_input = QLineEdit()
+        self.ollama_host_input.setToolTip("Endereço do servidor Ollama (se utilizado). Deixe em branco se não usar.")
+        layout.addRow("Host Ollama:", self.ollama_host_input)
+
+        self.api_port_spin = QSpinBox()
+        self.api_port_spin.setRange(1024, 65535)
+        self.api_port_spin.setToolTip("Porta para a API interna (se implementada).")
+        layout.addRow("Porta da API:", self.api_port_spin)
+
         return widget
-    
+
+    def map_widgets_to_config(self):
+        self.widget_map = {
+            self.theme_combo: "theme",
+            self.models_dir_input: "models_directory",
+            self.temperature_spin: "chat_settings.temperature",
+            self.max_tokens_spin: "chat_settings.max_tokens",
+            self.top_p_spin: "chat_settings.top_p",
+            self.top_k_spin: "chat_settings.top_k",
+            self.repeat_penalty_spin: "chat_settings.repeat_penalty",
+            self.auto_save_check: "auto_save",
+            self.font_size_spin: "ui_settings.font_size",
+            self.sidebar_width_spin: "ui_settings.sidebar_width",
+            self.show_system_info_check: "ui_settings.show_system_info",
+            self.hf_token_input: "hf_token",
+            self.ollama_host_input: "ollama_host",
+            self.api_port_spin: "api_port",
+        }
+
     def load_settings(self):
-        """Carregar configurações atuais"""
-        # Geral
-        self.theme_combo.setCurrentText(self.config.get("theme", "dark"))
-        self.language_combo.setCurrentText(self.config.get("language", "pt-BR"))
-        self.models_dir_input.setText(str(self.config.models_directory))
-        self.ollama_host_input.setText(self.config.get("ollama_host", "http://localhost:11434"))
-        self.api_port_spin.setValue(self.config.get("api_port", 8080))
-        
-        # Chat
-        self.temperature_spin.setValue(self.config.get("chat_settings.temperature", 0.7))
-        self.max_tokens_spin.setValue(self.config.get("chat_settings.max_tokens", 2048))
-        self.top_p_spin.setValue(self.config.get("chat_settings.top_p", 0.9))
-        self.top_k_spin.setValue(self.config.get("chat_settings.top_k", 40))
-        self.repeat_penalty_spin.setValue(self.config.get("chat_settings.repeat_penalty", 1.1))
-        self.max_conversations_spin.setValue(self.config.get("max_conversations", 100))
-        self.auto_save_check.setChecked(self.config.get("auto_save", True))
-        
-        # Interface
-        self.font_size_spin.setValue(self.config.get("ui_settings.font_size", 12))
-        self.sidebar_width_spin.setValue(self.config.get("ui_settings.sidebar_width", 250))
-        self.show_system_info_check.setChecked(self.config.get("ui_settings.show_system_info", True))
-    
+        for widget, key in self.widget_map.items():
+            value = self.config.get(key)
+            if isinstance(widget, (QSpinBox, QDoubleSpinBox)): widget.setValue(value)
+            elif isinstance(widget, QLineEdit): widget.setText(str(value))
+            elif isinstance(widget, QComboBox): widget.setCurrentText(str(value))
+            elif isinstance(widget, QCheckBox): widget.setChecked(bool(value))
+
     def save_settings(self):
-        """Salvar todas as configurações"""
-        # Geral
-        self.config.set("theme", self.theme_combo.currentText())
-        self.config.set("language", self.language_combo.currentText())
-        self.config.set("models_directory", self.models_dir_input.text())
-        self.config.set("ollama_host", self.ollama_host_input.text())
-        self.config.set("api_port", self.api_port_spin.value())
-        
-        # Chat
-        self.config.set("chat_settings.temperature", self.temperature_spin.value())
-        self.config.set("chat_settings.max_tokens", self.max_tokens_spin.value())
-        self.config.set("chat_settings.top_p", self.top_p_spin.value())
-        self.config.set("chat_settings.top_k", self.top_k_spin.value())
-        self.config.set("chat_settings.repeat_penalty", self.repeat_penalty_spin.value())
-        self.config.set("max_conversations", self.max_conversations_spin.value())
-        self.config.set("auto_save", self.auto_save_check.isChecked())
-        
-        # Interface
-        self.config.set("ui_settings.font_size", self.font_size_spin.value())
-        self.config.set("ui_settings.sidebar_width", self.sidebar_width_spin.value())
-        self.config.set("ui_settings.show_system_info", self.show_system_info_check.isChecked())
-        
-        # Emitir sinal de mudança
+        for widget, key in self.widget_map.items():
+            value = None
+            if isinstance(widget, (QSpinBox, QDoubleSpinBox)): value = widget.value()
+            elif isinstance(widget, QLineEdit): value = widget.text()
+            elif isinstance(widget, QComboBox): value = widget.currentText()
+            elif isinstance(widget, QCheckBox): value = widget.isChecked()
+            if value is not None: self.config.set(key, value)
         self.settings_changed.emit()
-        
-        QMessageBox.information(self, "Configurações Salvas", 
-                              "As configurações foram salvas com sucesso!")
-    
-    def apply_settings(self):
-        """Aplicar configurações sem salvar"""
-        self.save_settings()
-    
+        QMessageBox.information(self, "Sucesso", "Configurações salvas e aplicadas!")
+
     def reset_settings(self):
-        """Restaurar configurações padrão"""
-        reply = QMessageBox.question(self, "Restaurar Padrões", 
-                                   "Deseja restaurar todas as configurações para os valores padrão?",
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        
+        reply = QMessageBox.question(self, "Restaurar Padrões", "Tem certeza que deseja restaurar todas as configurações?")
         if reply == QMessageBox.StandardButton.Yes:
-            # Resetar para valores padrão
-            self.theme_combo.setCurrentText("dark")
-            self.language_combo.setCurrentText("pt-BR")
-            self.models_dir_input.setText(str(self.config.models_dir))
-            self.ollama_host_input.setText("http://localhost:11434")
-            self.api_port_spin.setValue(8080)
-            
-            self.temperature_spin.setValue(0.7)
-            self.max_tokens_spin.setValue(2048)
-            self.top_p_spin.setValue(0.9)
-            self.top_k_spin.setValue(40)
-            self.repeat_penalty_spin.setValue(1.1)
-            self.max_conversations_spin.setValue(100)
-            self.auto_save_check.setChecked(True)
-            
-            self.font_size_spin.setValue(12)
-            self.sidebar_width_spin.setValue(250)
-            self.show_system_info_check.setChecked(True)
-    
+            default_config = Config(); default_config.settings = default_config._load_config()
+            for widget, key in self.widget_map.items():
+                self.config.set(key, default_config.get(key))
+            self.load_settings()
+            QMessageBox.information(self, "Sucesso", "Configurações restauradas para o padrão.")
+
     def select_models_directory(self):
-        """Selecionar diretório de modelos"""
-        directory = QFileDialog.getExistingDirectory(
-            self, 
-            "Selecionar Diretório de Modelos",
-            str(self.config.models_directory)
-        )
-        
+        directory = QFileDialog.getExistingDirectory(self, "Selecionar Pasta de Modelos", self.models_dir_input.text())
         if directory:
             self.models_dir_input.setText(directory)
