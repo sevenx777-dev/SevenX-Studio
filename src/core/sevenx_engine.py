@@ -84,6 +84,38 @@ class SevenXEngine:
             logger.warning(f"Erro ao estimar tamanho do modelo: {e}")
             return 0
 
+    def _filter_valid_transformers_params(self, params: Dict) -> Dict:
+        """Filtra apenas parâmetros válidos para Transformers."""
+        valid_params = {
+            "max_new_tokens", "min_new_tokens", "do_sample", "temperature", 
+            "top_k", "top_p", "typical_p", "epsilon_cutoff", "eta_cutoff",
+            "diversity_penalty", "num_beams", "num_beam_groups", "penalty_alpha",
+            "repetition_penalty", "length_penalty", "no_repeat_ngram_size",
+            "bad_words_ids", "force_words_ids", "renormalize_logits", 
+            "constraints", "prefix_allowed_tokens_fn", "readability_penalties",
+            "guidance_scale", "low_memory", "num_return_sequences", 
+            "pad_token_id", "bos_token_id", "eos_token_id"
+        }
+        
+        # Filtrar apenas parâmetros válidos
+        filtered_params = {k: v for k, v in params.items() if k in valid_params}
+        
+        # Mapear nomes de parâmetros para os esperados pelo Transformers
+        param_mapping = {
+            "max_tokens": "max_new_tokens",
+            "repeat_penalty": "repetition_penalty"
+        }
+        
+        # Aplicar mapeamento
+        mapped_params = {}
+        for key, value in filtered_params.items():
+            if key in param_mapping:
+                mapped_params[param_mapping[key]] = value
+            else:
+                mapped_params[key] = value
+                
+        return mapped_params
+
     def load_model(self, model_id: str, force_reload: bool = False) -> bool:
         """
         Carrega um modelo específico de forma otimizada.
@@ -242,6 +274,10 @@ class SevenXEngine:
                     **opts
                 }
                 
+                # Filtrar parâmetros válidos para Transformers
+                filtered_opts = self._filter_valid_transformers_params(opts)
+                generation_kwargs.update(filtered_opts)
+                
                 # Configurações específicas para otimização
                 if "max_new_tokens" not in generation_kwargs:
                     generation_kwargs["max_new_tokens"] = self.config.get("chat_settings.max_tokens", 2048)
@@ -256,6 +292,85 @@ class SevenXEngine:
             logger.error(f"Erro detalhado na geração de stream: {e}")
             logger.debug(traceback.format_exc())
             yield f"Erro durante a geração de texto: {e}"
+
+    def generate_response(self, model_id: str, messages: List[Dict], options: Optional[Dict] = None) -> str:
+        """
+        Gera uma resposta completa (não streaming) a partir de um modelo carregado.
+        
+        Args:
+            model_id (str): ID do modelo a ser usado
+            messages (List[Dict]): Lista de mensagens para o modelo
+            options (Optional[Dict]): Opções adicionais para geração
+            
+        Returns:
+            str: Resposta gerada
+        """
+        if model_id not in self.loaded_models:
+            if not self.load_model(model_id):
+                return f"Erro: Falha ao carregar o modelo {model_id}."
+                
+        model_data = self.loaded_models[model_id]
+        opts = options or {}
+        
+        try:
+            if model_data["type"] == "gguf":
+                # --- Geração com Modelo GGUF ---
+                model = model_data["model"]
+                # CTransformers espera uma string de prompt simples
+                prompt = "\n".join([msg["content"] for msg in messages])
+                response = model(prompt, **opts)
+                return response
+            else:
+                # --- Geração com Modelo Transformers ---
+                model, tokenizer = model_data["model"], model_data["tokenizer"]
+                prompt_text = ""
+                
+                if tokenizer.chat_template:
+                    prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                else:
+                    for message in messages:
+                        prompt_text += message["content"] + tokenizer.eos_token
+                        
+                # Otimização de tokenização
+                inputs = tokenizer(
+                    [prompt_text], 
+                    return_tensors="pt", 
+                    padding=True, 
+                    truncation=True,
+                    max_length=self.config.get("chat_settings.max_tokens", 2048)
+                ).to(self.device)
+                
+                # Configurações de geração otimizadas
+                generation_kwargs = {
+                    "input_ids": inputs.input_ids,
+                    "attention_mask": inputs.attention_mask,
+                    **opts
+                }
+                
+                # Filtrar parâmetros válidos para Transformers
+                filtered_opts = self._filter_valid_transformers_params(opts)
+                generation_kwargs.update(filtered_opts)
+                
+                # Configurações específicas para otimização
+                if "max_new_tokens" not in generation_kwargs:
+                    generation_kwargs["max_new_tokens"] = self.config.get("chat_settings.max_tokens", 2048)
+                
+                # Gerar resposta completa
+                output = model.generate(**generation_kwargs)
+                generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+                
+                # Extrair apenas a parte gerada (remover o prompt)
+                if tokenizer.chat_template:
+                    # Para modelos com chat template, temos que lidar com isso diferentemente
+                    return generated_text[len(prompt_text):].strip()
+                else:
+                    # Para modelos tradicionais, podemos usar o prompt como base
+                    return generated_text
+                
+        except Exception as e:
+            logger.error(f"Erro detalhado na geração de resposta: {e}")
+            logger.debug(traceback.format_exc())
+            return f"Erro durante a geração de texto: {e}"
 
     # --- Outros métodos (sem alterações significativas) ---
     def is_available(self) -> bool:
