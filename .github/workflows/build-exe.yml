@@ -1,5 +1,7 @@
+# Nome do Workflow
 name: Build Executable
 
+# Gatilhos: Roda quando houver um push na branch 'main' ou manualmente
 on:
   push:
     branches: [ main ]
@@ -7,40 +9,44 @@ on:
 
 jobs:
   build:
+    # Usa a versão mais recente do Windows para a compilação
     runs-on: windows-latest
     
     steps:
+    # 1. Baixa o código do seu repositório para o ambiente de build
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # 2. Configura o ambiente Python na versão 3.9
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
 
+    # 3. Instala as dependências a partir do ficheiro requirements.txt
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pyinstaller pillow
-        pip install PyQt6
-        pip install torch --index-url https://download.pytorch.org/whl/cpu
-        pip install transformers huggingface-hub requests psutil
+        pip install -r requirements.txt
 
+    # 4. Cria o ícone da aplicação (opcional)
     - name: Create icon
-      run: |
-        python create_icon.py
+      run: python create_icon.py
       continue-on-error: true
 
+    # 5. Compila o executável usando o PyInstaller
     - name: Build executable
       run: |
-        pyinstaller --onefile --windowed --name "SevenX-Studio" --add-data "src;src" main.py
+        pyinstaller --onefile --windowed --name "SevenX-Studio" --add-data "src;src" --icon "assets/icon.ico" main.py
 
+    # 6. Renomeia o executável para incluir a versão
     - name: Rename executable
       run: |
         if (Test-Path "dist\SevenX-Studio.exe") {
           Rename-Item "dist\SevenX-Studio.exe" "SevenX-Studio-v1.0.0-Windows.exe"
         }
 
+    # 7. Faz o upload do executável como um "artefato" de build
     - name: Upload executable
       uses: actions/upload-artifact@v4
       with:
@@ -48,6 +54,7 @@ jobs:
         path: dist/SevenX-Studio-v1.0.0-Windows.exe
         retention-days: 30
 
+    # 8. Cria uma pasta para a versão portátil
     - name: Create portable folder
       run: |
         mkdir portable
@@ -56,12 +63,8 @@ jobs:
         }
         if (Test-Path "README.md") { Copy-Item "README.md" portable\ }
         if (Test-Path "LICENSE") { Copy-Item "LICENSE" portable\ }
-        echo "SevenX Studio v1.0.0 - Portable Version" | Out-File -FilePath portable\README.txt
-        echo "" | Out-File -FilePath portable\README.txt -Append
-        echo "1. Run SevenX-Studio-v1.0.0-Windows.exe" | Out-File -FilePath portable\README.txt -Append
-        echo "2. Go to Models tab and download DialoGPT Small" | Out-File -FilePath portable\README.txt -Append
-        echo "3. Go to Chat tab and start chatting!" | Out-File -FilePath portable\README.txt -Append
 
+    # 9. Faz o upload da versão portátil como um "artefato" de build
     - name: Upload portable version
       uses: actions/upload-artifact@v4
       with:
