@@ -1,0 +1,9 @@
+# Versão básica para instalação inicial
+PyQt6
+requests
+psutil
+torch
+transformers
+huggingface-hub
+numpy
+pyinstaller
